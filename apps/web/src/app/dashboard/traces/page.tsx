@@ -94,19 +94,31 @@ export default function TracesPage() {
     queryKey: ['agent-runs', currentProject?.id, filter],
     queryFn: () => tracesApi.list(currentProject!.id, { type: 'agent_run', status: filter.status || undefined, limit: 100 }),
     enabled: !!currentProject,
+    refetchInterval: 3000, // Poll every 3 seconds for real-time updates
   });
 
   const { data: traceTree } = useQuery({
     queryKey: ['trace-tree', currentProject?.id, selectedTraceId],
     queryFn: () => tracesApi.getTree(currentProject!.id, selectedTraceId!),
     enabled: !!currentProject && !!selectedTraceId,
+    refetchInterval: 3000,
   });
 
   if (!currentProject) {
     return <div className="p-8 text-center text-gray-500">Please select a project first.</div>;
   }
 
-  const runs = agentRuns?.data || [];
+  // Deduplicate agent runs: keep latest status per traceId
+  // (the API returns both "started" and "completed" events for the same trace)
+  const rawRuns = agentRuns?.data || [];
+  const runMap = new Map<string, any>();
+  for (const run of rawRuns) {
+    const existing = runMap.get(run.traceId);
+    if (!existing || run.status !== 'started') {
+      runMap.set(run.traceId, run);
+    }
+  }
+  const runs = Array.from(runMap.values());
   const tree = traceTree?.data || [];
 
   // Compute aggregate stats for the selected trace

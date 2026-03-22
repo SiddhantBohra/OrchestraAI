@@ -42,7 +42,7 @@ export default function DashboardPage() {
     queryKey: ['dashboard-overview', currentProject?.id],
     queryFn: () => dashboardApi.overview(currentProject!.id),
     enabled: !!currentProject,
-    refetchInterval: 30000, // Refresh every 30s
+    refetchInterval: 5000, // Refresh every 5s
   });
 
   if (!currentProject) {

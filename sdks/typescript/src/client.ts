@@ -124,7 +124,7 @@ export class OrchestraAI {
           'Content-Type': 'application/json',
           'User-Agent': '@orchestra-ai/sdk/0.1.0',
         },
-        body: JSON.stringify({ events }),
+        body: JSON.stringify({ events: events.map(stripNulls) }),
       });
 
       // Parse kill/block signals from 403 responses
@@ -133,7 +133,9 @@ export class OrchestraAI {
       }
 
       if (!response.ok) {
-        throw new Error(`OrchestraAI API error: ${response.status} ${response.statusText}`);
+        let detail = '';
+        try { detail = await response.text(); } catch {}
+        throw new Error(`OrchestraAI API error: ${response.status} — ${detail}`);
       }
 
       return this.parseJson(response);
@@ -209,4 +211,13 @@ export class OrchestraAI {
   get isEnabled(): boolean {
     return this.enabled;
   }
+}
+
+/** Remove null/undefined values so the API validator doesn't reject them. */
+function stripNulls(obj: IngestEvent): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null) clean[k] = v;
+  }
+  return clean;
 }
