@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import Link from 'next/link';
 import {
@@ -14,14 +12,7 @@ import {
 } from 'lucide-react';
 
 export default function HomePage() {
-  const router = useRouter();
   const { isAuthenticated, _hasHydrated } = useAuthStore();
-
-  useEffect(() => {
-    if (_hasHydrated && isAuthenticated) {
-      router.push('/dashboard');
-    }
-  }, [isAuthenticated, _hasHydrated, router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -33,18 +24,29 @@ export default function HomePage() {
             <span className="text-2xl font-bold text-white">OrchestraAI</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link
-              href="/login"
-              className="text-gray-300 hover:text-white transition"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/register"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
-            >
-              Get Started
-            </Link>
+            {_hasHydrated && isAuthenticated ? (
+              <Link
+                href="/dashboard"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-gray-300 hover:text-white transition"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/register"
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
