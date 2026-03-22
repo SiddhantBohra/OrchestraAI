@@ -17,24 +17,32 @@ OrchestraAI is the missing infrastructure layer: **trace what agents do, control
 ## Features
 
 ### Observability
-- **Trace Explorer** — hierarchical trace trees showing agent runs, LLM calls, tool calls, and errors
+- **Trace Explorer** — hierarchical trace trees showing agent runs, LLM calls, tool calls, retrievers, and errors
 - **Cost Tracking** — per-model, per-agent cost breakdown with custom pricing support
-- **Token Analytics** — prompt/completion token counts auto-extracted from LLM responses
+- **Token Analytics** — prompt/completion token counts auto-extracted from OpenAI, Anthropic, Gemini responses
 - **Session Tracking** — group multi-turn conversations by session ID
 - **Real-time SSE** — live trace streaming to the dashboard
 
 ### Control Plane
 - **Policy Engine** — budget limits, rate limiting, tool permissions, runaway detection
-- **Kill Switch** — instantly halt agents that exceed budget or enter loops
+- **Kill Switch** — instantly halt agents that exceed budget or enter loops ([see how it works](#kill-switch))
 - **PII Redaction** — automatic redaction of emails, phone numbers, SSNs in trace data
 - **Alerts & Webhooks** — policy violations create alerts and fire webhook notifications
 
-### SDK & Integrations
-- **Python SDK** — context-manager API with auto token extraction from OpenAI/Anthropic responses
-- **TypeScript SDK** — callback and manual tracing patterns
-- **LangChain/LangGraph** — callback handler auto-captures all LLM + tool spans
-- **OpenTelemetry** — native OTLP ingestion for teams already using OTEL
-- **LlamaIndex, CrewAI** — framework-specific tracers
+### SDKs (Python & TypeScript — feature parity)
+
+| Feature | Python | TypeScript |
+|---------|--------|------------|
+| Auto token extraction | `response=response` | `response: response` |
+| Kill switch | `AgentKilledException` | `AgentKilledException` |
+| Session tracking | `session_id="..."` | `sessionId: "..."` |
+| LLM call | `trace.llm_call()` | `trace.llmCallSpan()` |
+| Tool call | `trace.tool_call()` | `trace.toolCall()` |
+| Retriever span | `trace.retriever_call()` | `trace.retrieverCall()` |
+| Agent action span | `trace.agent_action()` | `trace.agentAction()` |
+| LangChain/LangGraph | Callback handler | Callback handler |
+| CrewAI, LlamaIndex | Framework tracers | — |
+| OpenTelemetry | OTLP ingestion | OTLP ingestion |
 
 ## Architecture
 
@@ -59,24 +67,33 @@ graph LR
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-org/orchestra-ai.git
-cd orchestra-ai
+git clone https://github.com/SiddhantBohra/OrchestraAI.git
+cd OrchestraAI
 npm install
 ```
 
-### 2. Start infrastructure
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env — set a strong JWT_SECRET
+```
 
+Edit `.env` and fill in the required values:
+```bash
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your-db-password
+JWT_SECRET=$(openssl rand -base64 32)
+```
+
+### 3. Start infrastructure
+
+```bash
 docker compose up -d postgres redis
 ```
 
-### 3. Run the API and dashboard
+### 4. Run the API and dashboard
 
 ```bash
-# Development mode (hot reload)
 npm run dev:api   # API on http://localhost:3001
 npm run dev:web   # Dashboard on http://localhost:3000
 
@@ -84,9 +101,7 @@ npm run dev:web   # Dashboard on http://localhost:3000
 npm run dev:all
 ```
 
-### 4. Open Swagger docs
-
-Visit [http://localhost:3001/api/docs](http://localhost:3001/api/docs) to explore the API.
+Swagger docs at [http://localhost:3001/api/docs](http://localhost:3001/api/docs).
 
 ### 5. Register and create a project
 
@@ -101,17 +116,19 @@ curl -X POST http://localhost:3001/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com","password":"YourPassword123"}'
 
-# Create a project (save the rawApiKey — shown only once)
+# Create a project (save the rawApiKey — shown only once!)
 curl -X POST http://localhost:3001/api/projects \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
   -d '{"name":"My Project","budgetLimit":50}'
 ```
 
-### 6. Instrument your agent
+### 6. Install an SDK and instrument your agent
 
-**Python:**
+#### Python
+
 ```bash
+# Install from the local source (not published to PyPI)
 pip install -e sdks/python
 ```
 
@@ -131,7 +148,17 @@ with oa.trace("my-agent") as trace:
     trace.record_llm_call(response=response)
 ```
 
-**TypeScript:**
+#### TypeScript
+
+```bash
+# Link the local SDK (not published to npm)
+npm link ./sdks/typescript
+
+# Or add it as a file dependency in your project's package.json:
+#   "@orchestra-ai/sdk": "file:./path/to/OrchestraAI/sdks/typescript"
+# Then run: npm install
+```
+
 ```typescript
 import { OrchestraAI } from '@orchestra-ai/sdk';
 import OpenAI from 'openai';
@@ -152,10 +179,68 @@ await oa.trace('my-agent', async (trace) => {
 });
 ```
 
+## Kill Switch
+
+The kill switch stops runaway agents mid-execution when budget is exceeded or a policy fires.
+
+```
+Agent Loop                     OrchestraAI API
+─────────────                  ────────────────
+Call #1 → llmCall()  ────────→ Ingest → cost $0.012 → 200 OK
+Call #2 → llmCall()  ────────→ Ingest → cost $0.025 → 200 OK
+Call #3 → llmCall()  ────────→ Ingest → cost $0.037 → 200 OK
+Call #4 → llmCall()  ────────→ Budget exceeded!
+                     ←──────── 403 { action: "kill" }
+                               AgentKilledException raised
+Agent stops immediately.       ✓ No more spending.
+```
+
+**Python:**
+```python
+from orchestra_ai import OrchestraAI, AgentKilledException
+
+try:
+    with oa.trace("my-agent") as trace:
+        while True:
+            response = llm.chat.completions.create(...)
+            trace.record_llm_call(response=response)
+except AgentKilledException as e:
+    print(f"Agent halted: {e.reason}")
+```
+
+**TypeScript:**
+```typescript
+import { OrchestraAI, AgentKilledException } from '@orchestra-ai/sdk';
+
+try {
+  await oa.trace('my-agent', async (trace) => {
+    while (true) {
+      const res = await openai.chat.completions.create({ ... });
+      await trace.llmCall({ response: res });
+    }
+  });
+} catch (e) {
+  if (e instanceof AgentKilledException) {
+    console.log(`Agent halted: ${e.reason}`);
+  }
+}
+```
+
+See full working demos: [`examples/kill_switch_demo.py`](examples/kill_switch_demo.py) | [`examples/kill_switch_demo.ts`](examples/kill_switch_demo.ts)
+
+## Examples
+
+| Example | Python | TypeScript |
+|---------|--------|------------|
+| Basic tracing (LLM + tools + retriever) | [`examples/basic_tracing.py`](examples/basic_tracing.py) | [`examples/basic_tracing.ts`](examples/basic_tracing.ts) |
+| Kill switch demo | [`examples/kill_switch_demo.py`](examples/kill_switch_demo.py) | [`examples/kill_switch_demo.ts`](examples/kill_switch_demo.ts) |
+| LangChain integration test | [`tests/langchain_test.py`](tests/langchain_test.py) | — |
+| LMStudio local model test | [`tests/lmstudio_test.py`](tests/lmstudio_test.py) | — |
+
 ## Project Structure
 
 ```
-orchestra-ai/
+OrchestraAI/
 ├── apps/
 │   ├── api/             # NestJS backend API
 │   │   ├── src/
@@ -174,17 +259,13 @@ orchestra-ai/
 │   └── web/             # Next.js dashboard
 │       └── Dockerfile
 ├── packages/
-│   └── shared/          # Shared types, enums, utilities
+│   └── shared/          # Shared types, enums, pricing constants
 ├── sdks/
-│   ├── python/          # Python SDK
-│   │   └── orchestra_ai/
-│   │       ├── client.py
-│   │       ├── tracer.py
-│   │       ├── token_extraction.py
-│   │       └── integrations/    # LangChain, LangGraph, CrewAI, LlamaIndex
-│   └── typescript/      # TypeScript SDK
+│   ├── python/          # Python SDK (pip install -e sdks/python)
+│   └── typescript/      # TypeScript SDK (npm link ./sdks/typescript)
+├── examples/            # Working examples for both languages
 ├── tests/               # E2E integration tests
-├── infra/               # ClickHouse init scripts
+├── infra/               # ClickHouse init scripts (future)
 ├── docker-compose.yml
 └── turbo.json
 ```
@@ -211,13 +292,18 @@ Full Swagger docs at `/api/docs` when the API is running.
 ## Running Tests
 
 ```bash
-# E2E tests (requires running API + Postgres)
+# Set required env vars (from your project creation step)
 export ORCHESTRA_API_KEY=oai_your_key
 export ORCHESTRA_PROJECT_ID=your_project_id
 export ORCHESTRA_JWT_TOKEN=your_jwt_token
 
+# Python E2E tests
 python tests/langchain_test.py
 python tests/lmstudio_test.py
+
+# Examples
+python examples/basic_tracing.py
+npx tsx examples/basic_tracing.ts
 ```
 
 ## Contributing
