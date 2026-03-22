@@ -1,5 +1,7 @@
 # OrchestraAI
 
+> **Status: Work in Progress** — Core tracing, policy engine, kill switch, and 16 framework integrations are functional. Dashboard UI, evals, and datasets are under active development. Contributions welcome!
+
 **The observability & control plane for autonomous AI agents.**
 
 OrchestraAI gives engineering teams full visibility into what their AI agents are doing — every LLM call, tool invocation, cost, and error — with policy-based controls to prevent runaway behavior in production.
@@ -312,6 +314,35 @@ OrchestraAI/
 | Events | GET | `/api/projects/:id/events/stream` | SSE stream |
 
 Full Swagger docs at `/api/docs` when the API is running.
+
+## Roadmap
+
+### Done
+- [x] Trace explorer with hierarchical span trees
+- [x] Cost tracking with custom pricing
+- [x] Auto token extraction (OpenAI, Anthropic, Gemini)
+- [x] Policy engine (budget, rate limit, runaway, tool permissions)
+- [x] Kill switch with `AgentKilledException`
+- [x] Human-in-the-loop spans
+- [x] 16 framework integrations
+- [x] SSE real-time events
+- [x] Prompt versioning
+- [x] Bcrypt-hashed API keys
+- [x] TypeORM migrations
+
+### In Progress
+- [ ] Dashboard UI improvements (trace detail panel, filtering)
+- [ ] Agent graph visualization
+
+### Planned
+- [ ] Evaluation framework (LLM-as-judge scoring)
+- [ ] Datasets & experiments (A/B testing)
+- [ ] LLM Playground (test prompts in UI)
+- [ ] Annotation queues (human review workflows)
+- [ ] Custom dashboards
+- [ ] ClickHouse for high-volume trace storage
+- [ ] WebSocket live dashboard updates
+- [ ] Publish SDKs to PyPI / npm
 
 ## Contributing
 
