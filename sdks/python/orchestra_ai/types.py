@@ -92,3 +92,18 @@ class PolicyResult(BaseModel):
     action: Optional[str] = None
     policy_name: Optional[str] = None
     message: Optional[str] = None
+
+
+class AgentKilledException(Exception):
+    """Raised when the API kills an agent due to a policy violation.
+
+    This exception intentionally escapes the SDK's error suppression
+    so the agent stops executing immediately (budget exceeded, runaway
+    detected, etc.).
+    """
+
+    def __init__(self, reason: str, policy_id: Optional[str] = None, action: str = "kill"):
+        self.reason = reason
+        self.policy_id = policy_id
+        self.action = action
+        super().__init__(f"Agent killed: {reason}")

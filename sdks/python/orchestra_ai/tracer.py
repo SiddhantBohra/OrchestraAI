@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .token_extraction import TokenUsage, extract_token_usage
-from .types import IngestEvent, SpanStatus, TraceType
+from .types import AgentKilledException, IngestEvent, SpanStatus, TraceType
 
 if TYPE_CHECKING:
     from .client import OrchestraAI
@@ -376,14 +376,23 @@ class Trace:
         self.status = SpanStatus.ERROR
     
     def _flush(self) -> None:
-        """Flush all pending events to the server."""
+        """Flush all pending events to the server.
+
+        Raises:
+            AgentKilledException: Propagated from the API when budget is exceeded
+                or a kill/block policy fires. This is intentional — the agent
+                must stop.
+        """
         if not self.enabled or not self._pending_events:
             return
-        
+
         try:
             self._client.send_events_batch(self._pending_events)
+        except AgentKilledException:
+            self._pending_events = []
+            raise  # Let this escape — the agent must stop
         except Exception as e:
-            # Log but don't raise - we don't want tracing to break the app
+            # Log but don't raise — network errors shouldn't break the app
             print(f"[OrchestraAI] Failed to send events: {e}")
         finally:
             self._pending_events = []

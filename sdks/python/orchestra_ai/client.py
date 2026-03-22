@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 import httpx
 
 from .tracer import Trace
-from .types import IngestEvent
+from .types import AgentKilledException, IngestEvent
 
 
 class OrchestraAI:
@@ -153,22 +153,48 @@ class OrchestraAI:
     def send_events_batch(self, events: list[IngestEvent]) -> Dict[str, Any]:
         """
         Send multiple events to the ingest API.
-        
+
         Args:
             events: List of events to send.
-        
+
         Returns:
             API response data.
+
+        Raises:
+            AgentKilledException: If the API returns a kill/block action (budget exceeded, runaway, etc.).
         """
         if not self.enabled:
             return {"ok": True, "disabled": True, "count": len(events)}
-        
+
         response = self.client.post(
             "/api/ingest/batch",
             json={"events": [e.model_dump(exclude_none=True, by_alias=True) for e in events]},
         )
+
+        # Parse kill/block signals from 403 responses
+        if response.status_code == 403:
+            self._handle_forbidden(response)
+
         response.raise_for_status()
         return response.json()
+
+    def _handle_forbidden(self, response: "httpx.Response") -> None:
+        """Check if a 403 is a kill/block signal and raise AgentKilledException."""
+        try:
+            body = response.json()
+        except Exception:
+            response.raise_for_status()
+            return
+
+        action = body.get("action") or ""
+        message = body.get("message") or body.get("reason") or "Policy violation"
+        policy_id = body.get("policyId")
+
+        if action in ("kill", "block"):
+            raise AgentKilledException(reason=message, policy_id=policy_id, action=action)
+
+        # Not a kill — raise the normal HTTP error
+        response.raise_for_status()
     
     def close(self) -> None:
         """Close the HTTP clients."""

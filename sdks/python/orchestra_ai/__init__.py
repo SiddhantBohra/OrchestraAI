@@ -9,7 +9,7 @@ from .tracer import Trace, Span
 from .decorators import agent_run, tool_call, llm_call
 from .token_extraction import extract_token_usage, TokenUsage
 from .init_helper import init, get_client
-from .types import TraceType, SpanStatus
+from .types import TraceType, SpanStatus, AgentKilledException
 
 __version__ = "0.1.0"
 
@@ -26,4 +26,5 @@ __all__ = [
     "llm_call",
     "extract_token_usage",
     "TokenUsage",
+    "AgentKilledException",
 ]
