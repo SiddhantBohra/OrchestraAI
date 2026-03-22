@@ -7,6 +7,8 @@ export enum TraceType {
   STEP = 'step',
   TOOL_CALL = 'tool_call',
   LLM_CALL = 'llm_call',
+  RETRIEVER = 'retriever',
+  AGENT_ACTION = 'agent_action',
   ERROR = 'error',
 }
 
@@ -30,6 +32,8 @@ export interface OrchestraAIConfig {
 export interface TraceOptions {
   /** Agent ID (auto-generated if not provided) */
   agentId?: string;
+  /** Session/thread ID for multi-turn conversations */
+  sessionId?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -71,6 +75,28 @@ export interface ToolCallOptions {
   metadata?: Record<string, unknown>;
 }
 
+export interface RetrieverCallOptions {
+  /** Search/retrieval query */
+  query: string;
+  /** Retriever name (e.g., "vector-search", "bm25") */
+  retrieverName?: string;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentActionOptions {
+  /** Action name */
+  action: string;
+  /** Tool being invoked */
+  toolName?: string;
+  /** Tool input (string) */
+  toolInput?: string;
+  /** Agent's reasoning/thought */
+  thought?: string;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
 export interface IngestEvent {
   type: string;
   traceId?: string;
@@ -82,6 +108,7 @@ export interface IngestEvent {
   status?: string;
   agentId?: string;
   agentName?: string;
+  sessionId?: string;
   model?: string;
   promptTokens?: number;
   completionTokens?: number;

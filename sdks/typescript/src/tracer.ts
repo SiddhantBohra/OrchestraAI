@@ -2,12 +2,14 @@
  * Tracing functionality for OrchestraAI SDK
  */
 
-import type { OrchestraAI } from './client';
+import { OrchestraAI, AgentKilledException } from './client';
 import type {
   TraceOptions,
   SpanOptions,
   LLMCallOptions,
   ToolCallOptions,
+  RetrieverCallOptions,
+  AgentActionOptions,
   IngestEvent,
 } from './types';
 import { TraceType, SpanStatus } from './types';
@@ -97,6 +99,15 @@ export class Span {
       this.status = status;
     }
 
+    // Auto-extract tokens from response if present
+    const response = this.data.response;
+    if (response != null && this.data.inputTokens == null) {
+      const usage = extractTokenUsage(response);
+      if (usage.inputTokens != null) this.data.inputTokens ??= usage.inputTokens;
+      if (usage.outputTokens != null) this.data.outputTokens ??= usage.outputTokens;
+      if (usage.model && !this.data.model) this.data.model = usage.model;
+    }
+
     const event: IngestEvent = {
       type: this.spanType,
       traceId: this.trace.traceId,
@@ -108,6 +119,7 @@ export class Span {
       status: mapStatus(this.status),
       agentId: this.trace.agentId,
       agentName: this.trace.agentName,
+      sessionId: this.trace.sessionId,
       model: this.data.model as string | undefined,
       promptTokens: this.data.inputTokens as number | undefined,
       completionTokens: this.data.outputTokens as number | undefined,
@@ -132,6 +144,7 @@ export class Trace {
   private client: OrchestraAI;
   readonly agentName: string;
   readonly agentId: string;
+  readonly sessionId: string | undefined;
   readonly traceId: string;
   readonly rootSpanId: string;
   readonly startTime: number;
@@ -145,6 +158,7 @@ export class Trace {
     this.client = client;
     this.agentName = agentName;
     this.agentId = options?.agentId || generateId();
+    this.sessionId = options?.sessionId;
     this.traceId = generateId();
     this.rootSpanId = generateId();
     this.currentSpanId = this.rootSpanId;
@@ -161,12 +175,15 @@ export class Trace {
       status: 'started',
       agentId: this.agentId,
       agentName: this.agentName,
+      sessionId: this.sessionId,
       metadata: this.metadata,
     });
   }
 
+  // ── Span Creators ──────────────────────────────────────────
+
   /**
-   * Create a new step span.
+   * Create a step span.
    */
   step(name: string, options?: SpanOptions): Span {
     return new Span(this, name, TraceType.STEP, {
@@ -199,7 +216,6 @@ export class Trace {
    * Explicit values take priority over auto-extracted ones.
    */
   llmCallSpan(options: LLMCallOptions): Span {
-    // Auto-extract from response when explicit values not given
     let { model, inputTokens, outputTokens } = options;
     if (options.response != null) {
       const usage = extractTokenUsage(options.response);
@@ -222,12 +238,50 @@ export class Trace {
       latencyMs: options.latencyMs,
       inputPreview: options.inputPreview,
       outputPreview: options.outputPreview,
+      response: options.response,
     });
     return span;
   }
 
   /**
-   * Record an LLM call (convenience method).
+   * Create a retriever/search span (e.g., vector search, RAG retrieval).
+   */
+  retrieverCall(options: RetrieverCallOptions): Span {
+    const name = options.retrieverName
+      ? `retriever:${options.retrieverName}`
+      : 'retriever';
+    const span = new Span(this, name, TraceType.RETRIEVER, {
+      parentSpanId: this.currentSpanId,
+      metadata: options.metadata,
+    });
+    span.setData({
+      inputPreview: options.query?.slice(0, 500),
+    });
+    return span;
+  }
+
+  /**
+   * Create an agent reasoning/action span (thought + action decision).
+   */
+  agentAction(options: AgentActionOptions): Span {
+    const span = new Span(
+      this,
+      `action:${options.action}`,
+      TraceType.AGENT_ACTION,
+      { parentSpanId: this.currentSpanId, metadata: options.metadata }
+    );
+    span.setData({
+      toolName: options.toolName,
+      toolInput: options.toolInput ? { input: options.toolInput } : undefined,
+      inputPreview: options.thought?.slice(0, 500),
+    });
+    return span;
+  }
+
+  // ── Convenience Methods ────────────────────────────────────
+
+  /**
+   * Record an LLM call (convenience — creates span, ends it immediately).
    */
   async llmCall(options: LLMCallOptions): Promise<void> {
     const span = this.llmCallSpan(options);
@@ -235,7 +289,7 @@ export class Trace {
   }
 
   /**
-   * Record a tool call (convenience method).
+   * Record a tool call (convenience).
    */
   async recordToolCall(options: ToolCallOptions & { output?: unknown }): Promise<void> {
     const span = this.toolCall(options);
@@ -259,22 +313,23 @@ export class Trace {
       status: 'failed',
       agentId: this.agentId,
       agentName: this.agentName,
+      sessionId: this.sessionId,
       errorMessage: error.message,
       errorType: error.name,
     };
     this.pendingEvents.push(event);
     this.status = SpanStatus.ERROR;
-    // Don't flush here — let end() handle the final flush so the end event is included
   }
 
+  // ── Lifecycle ──────────────────────────────────────────────
+
   /**
-   * End the trace successfully.
+   * End the trace.
    */
   end(): void {
     this.endTime = Date.now();
     const finalStatus = this.status === SpanStatus.ERROR ? 'failed' : 'completed';
 
-    // Send agent_run end event
     this.addPendingEvent({
       type: TraceType.AGENT_RUN,
       traceId: this.traceId,
@@ -285,6 +340,7 @@ export class Trace {
       status: finalStatus,
       agentId: this.agentId,
       agentName: this.agentName,
+      sessionId: this.sessionId,
       metadata: this.metadata,
     });
 
@@ -300,6 +356,8 @@ export class Trace {
 
   /**
    * Flush all pending events to the server.
+   *
+   * @throws {AgentKilledException} When the API returns a kill/block signal.
    */
   private async flush(): Promise<void> {
     if (this.pendingEvents.length === 0) {
@@ -312,7 +370,10 @@ export class Trace {
     try {
       await this.client.sendEventsBatch(eventsToSend);
     } catch (error) {
-      // Log but don't throw - we don't want tracing to break the app
+      if (error instanceof AgentKilledException) {
+        throw error; // Let kill signals propagate — the agent must stop
+      }
+      // Log but don't throw — network errors shouldn't break the app
       console.error('[OrchestraAI] Failed to send events:', error);
     }
   }

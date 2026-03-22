@@ -4,7 +4,7 @@
  * Observability & Control Plane for Autonomous AI Agents
  */
 
-export { OrchestraAI } from './client';
+export { OrchestraAI, AgentKilledException } from './client';
 export { Trace, Span } from './tracer';
 export type {
   OrchestraAIConfig,
@@ -12,6 +12,8 @@ export type {
   SpanOptions,
   LLMCallOptions,
   ToolCallOptions,
+  RetrieverCallOptions,
+  AgentActionOptions,
   IngestEvent,
 } from './types';
 export { TraceType, SpanStatus } from './types';
