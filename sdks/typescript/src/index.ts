@@ -14,6 +14,7 @@ export type {
   ToolCallOptions,
   RetrieverCallOptions,
   AgentActionOptions,
+  HumanInputOptions,
   IngestEvent,
 } from './types';
 export { TraceType, SpanStatus } from './types';

@@ -245,6 +245,7 @@ Every framework integration has a working, runnable example:
 | **OpenAI SDK** auto-traced completions | [`openai_agents.py`](examples/openai_agents.py) | [`openai_agents.ts`](examples/openai_agents.ts) |
 | **LangChain** ReAct agent with tools | [`langchain_agent.py`](examples/langchain_agent.py) | [`langchain_agent.ts`](examples/langchain_agent.ts) |
 | **LangGraph** auto-instrumented graph | [`langgraph_agent.py`](examples/langgraph_agent.py) | [`langgraph_agent.ts`](examples/langgraph_agent.ts) |
+| **Human-in-the-loop** (approval spans) | [`human_in_the_loop.py`](examples/human_in_the_loop.py) | [`human_in_the_loop.ts`](examples/human_in_the_loop.ts) |
 | **Google ADK** agent with plugin | [`google_adk_agent.py`](examples/google_adk_agent.py) | — |
 | **CrewAI** multi-agent crew | [`crewai_crew.py`](examples/crewai_crew.py) | — |
 | **LlamaIndex** RAG pipeline | [`llamaindex_rag.py`](examples/llamaindex_rag.py) | — |

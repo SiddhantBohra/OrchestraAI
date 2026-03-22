@@ -13,6 +13,7 @@ class TraceType(str, Enum):
     LLM_CALL = "llm_call"
     RETRIEVER = "retriever"
     AGENT_ACTION = "agent_action"
+    HUMAN_INPUT = "human_input"
     ERROR = "error"
 
 

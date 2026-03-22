@@ -248,6 +248,43 @@ class Trace:
         )
         return span
 
+    def human_input(
+        self,
+        prompt: str,
+        action: str = "approval",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Span:
+        """Create a human-in-the-loop span.
+
+        Use this when the agent pauses for human approval, feedback, or input.
+        The span duration captures how long the agent waited.
+
+        Args:
+            prompt: What the agent is asking the human (e.g. "Approve tool call to delete_file?").
+            action: Type of HITL interaction ("approval", "feedback", "input", "escalation").
+            metadata: Additional metadata.
+
+        Returns:
+            A Span context manager. Set ``output_preview`` with the human's response.
+
+        Example::
+
+            with trace.human_input("Approve sending email to client?", action="approval") as span:
+                approved = get_human_approval()  # your UI/Slack/webhook logic
+                span.set_data(output_preview="approved" if approved else "rejected")
+                if not approved:
+                    span.set_error(Exception("Human rejected the action"))
+        """
+        span = Span(
+            trace=self,
+            name=f"human:{action}",
+            span_type=TraceType.HUMAN_INPUT,
+            parent_span_id=self._current_span_id,
+            metadata={**(metadata or {}), "hitl_action": action},
+        )
+        span.set_data(input_preview=prompt[:500] if prompt else None)
+        return span
+
     def llm_call(
         self,
         model: Optional[str] = None,

@@ -289,6 +289,7 @@ export class IngestService {
       llm_call: TraceType.LLM_CALL,
       retriever: TraceType.RETRIEVER,
       agent_action: TraceType.AGENT_ACTION,
+      human_input: TraceType.HUMAN_INPUT,
       error: TraceType.ERROR,
     };
     return map[type] || TraceType.STEP;

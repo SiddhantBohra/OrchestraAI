@@ -10,6 +10,7 @@ import type {
   ToolCallOptions,
   RetrieverCallOptions,
   AgentActionOptions,
+  HumanInputOptions,
   IngestEvent,
 } from './types';
 import { TraceType, SpanStatus } from './types';
@@ -274,6 +275,34 @@ export class Trace {
       toolName: options.toolName,
       toolInput: options.toolInput ? { input: options.toolInput } : undefined,
       inputPreview: options.thought?.slice(0, 500),
+    });
+    return span;
+  }
+
+  /**
+   * Create a human-in-the-loop span.
+   *
+   * Use when the agent pauses for human approval, feedback, or input.
+   * The span duration captures how long the agent waited.
+   *
+   * @example
+   * ```ts
+   * const span = trace.humanInput({ prompt: 'Approve deleting file?', action: 'approval' });
+   * const approved = await getHumanApproval();
+   * span.setData({ outputPreview: approved ? 'approved' : 'rejected' });
+   * span.end();
+   * ```
+   */
+  humanInput(options: HumanInputOptions): Span {
+    const action = options.action || 'approval';
+    const span = new Span(
+      this,
+      `human:${action}`,
+      TraceType.HUMAN_INPUT,
+      { parentSpanId: this.currentSpanId, metadata: { ...options.metadata, hitl_action: action } }
+    );
+    span.setData({
+      inputPreview: options.prompt?.slice(0, 500),
     });
     return span;
   }

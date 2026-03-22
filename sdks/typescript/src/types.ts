@@ -9,6 +9,7 @@ export enum TraceType {
   LLM_CALL = 'llm_call',
   RETRIEVER = 'retriever',
   AGENT_ACTION = 'agent_action',
+  HUMAN_INPUT = 'human_input',
   ERROR = 'error',
 }
 
@@ -93,6 +94,15 @@ export interface AgentActionOptions {
   toolInput?: string;
   /** Agent's reasoning/thought */
   thought?: string;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
+export interface HumanInputOptions {
+  /** What the agent is asking the human */
+  prompt: string;
+  /** Type of HITL interaction: "approval", "feedback", "input", "escalation" */
+  action?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
