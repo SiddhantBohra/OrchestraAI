@@ -42,11 +42,13 @@ export interface SpanOptions {
 }
 
 export interface LLMCallOptions {
-  /** Model name (e.g., "gpt-4o", "claude-3-opus") */
-  model: string;
-  /** Number of input tokens */
+  /** Model name — auto-detected from response when omitted */
+  model?: string;
+  /** Raw LLM response object (OpenAI, Anthropic, etc.). Tokens and model are auto-extracted. */
+  response?: unknown;
+  /** Number of input tokens — auto-detected from response */
   inputTokens?: number;
-  /** Number of output tokens */
+  /** Number of output tokens — auto-detected from response */
   outputTokens?: number;
   /** Latency in milliseconds */
   latencyMs?: number;

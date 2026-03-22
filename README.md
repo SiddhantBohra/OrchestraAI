@@ -134,18 +134,21 @@ with oa.trace("my-agent") as trace:
 **TypeScript:**
 ```typescript
 import { OrchestraAI } from '@orchestra-ai/sdk';
+import OpenAI from 'openai';
 
 const oa = new OrchestraAI({
   apiKey: 'oai_...',
   baseUrl: 'http://localhost:3001',
 });
+const openai = new OpenAI();
 
 await oa.trace('my-agent', async (trace) => {
-  await trace.llmCall({
+  const response = await openai.chat.completions.create({
     model: 'gpt-4o',
-    inputTokens: 100,
-    outputTokens: 50,
+    messages: [{ role: 'user', content: 'Hello!' }],
   });
+  // Tokens and model auto-extracted from response
+  await trace.llmCall({ response });
 });
 ```
 

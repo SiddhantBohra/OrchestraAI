@@ -15,3 +15,5 @@ export type {
   IngestEvent,
 } from './types';
 export { TraceType, SpanStatus } from './types';
+export { extractTokenUsage } from './token-extraction';
+export type { TokenUsage } from './token-extraction';

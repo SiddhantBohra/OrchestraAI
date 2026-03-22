@@ -11,6 +11,7 @@ import type {
   IngestEvent,
 } from './types';
 import { TraceType, SpanStatus } from './types';
+import { extractTokenUsage } from './token-extraction';
 
 /**
  * Generate a unique ID (simplified UUID v4)
@@ -193,18 +194,31 @@ export class Trace {
 
   /**
    * Create an LLM call span.
+   *
+   * Pass `response` to auto-extract model, inputTokens, outputTokens.
+   * Explicit values take priority over auto-extracted ones.
    */
   llmCallSpan(options: LLMCallOptions): Span {
+    // Auto-extract from response when explicit values not given
+    let { model, inputTokens, outputTokens } = options;
+    if (options.response != null) {
+      const usage = extractTokenUsage(options.response);
+      model = model ?? usage.model;
+      inputTokens = inputTokens ?? usage.inputTokens;
+      outputTokens = outputTokens ?? usage.outputTokens;
+    }
+    model = model ?? 'unknown';
+
     const span = new Span(
       this,
-      `llm:${options.model}`,
+      `llm:${model}`,
       TraceType.LLM_CALL,
       { parentSpanId: this.currentSpanId, metadata: options.metadata }
     );
     span.setData({
-      model: options.model,
-      inputTokens: options.inputTokens,
-      outputTokens: options.outputTokens,
+      model,
+      inputTokens,
+      outputTokens,
       latencyMs: options.latencyMs,
       inputPreview: options.inputPreview,
       outputPreview: options.outputPreview,
