@@ -21,7 +21,7 @@ function preview(value: unknown, max = 500): string | undefined {
 export interface LangChainHandlerOptions {
   /** OrchestraAI client */
   client: OrchestraAI;
-  /** Agent/graph name */
+  /** Agent/graph name — auto-detected from the chain/graph if omitted */
   agentName?: string;
   /** Session ID for multi-turn conversations */
   sessionId?: string;
@@ -30,10 +30,16 @@ export interface LangChainHandlerOptions {
 }
 
 /**
- * Create a LangChain callback handler that emits OrchestraAI traces/spans.
+ * Create a LangChain/LangGraph callback handler for OrchestraAI.
  *
- * One trace is created for the root chain invocation. All nested chains,
- * LLM calls, tool calls, and retrievers become child spans.
+ * Minimal usage — just pass the client:
+ * ```ts
+ * const handler = createLangChainHandler({ client: oa });
+ * await graph.invoke(input, { callbacks: [handler] });
+ * ```
+ *
+ * Everything is auto-detected: agent name from the chain, model from the LLM,
+ * tokens from the response. Override with options if needed.
  */
 export function createLangChainHandler(options: LangChainHandlerOptions): any {
   let rootTrace: Trace | null = null;
@@ -41,11 +47,12 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
   const runToParent = new Map<string, string>(); // runId → parentRunId
 
   /** Get or create the root trace. Only the first chain creates a trace. */
-  function ensureTrace(runId: string, parentRunId?: string, name?: string): Trace {
+  function ensureTrace(runId: string, parentRunId?: string, autoName?: string): Trace {
     if (parentRunId) runToParent.set(runId, parentRunId);
 
     if (!rootTrace) {
-      const traceName = options.agentName || name || 'langchain-agent';
+      // Auto-detect name: explicit option > chain/graph name > fallback
+      const traceName = options.agentName || autoName || 'agent';
       rootTrace = options.client.startTrace(traceName, {
         sessionId: options.sessionId,
         metadata: { ...options.metadata, framework: 'langchain' },
