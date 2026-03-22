@@ -14,36 +14,43 @@ Deploying AI agents is easy. Trusting them in production is hard.
 
 OrchestraAI is the missing infrastructure layer: **trace what agents do, control what they're allowed to do, and kill them when they go wrong.**
 
+## Supported Frameworks
+
+Works with every major agent framework — drop-in, zero config:
+
+| Framework | Python | TypeScript | Integration Style |
+|-----------|:------:|:----------:|-------------------|
+| **OpenAI SDK** | `openai_agents_tracer` | `response:` auto-extract | Auto-patch / response object |
+| **LangChain** | `langchain_tracer` | `langchain.ts` handler | Callback handler |
+| **LangGraph** | `langgraph_tracer` | via LangChain handler | Auto-patch invoke/stream |
+| **Google ADK** | `google_adk_tracer` | — | Plugin (`BasePlugin`) |
+| **CrewAI** | `crewai_tracer` | — | Auto-patch `Crew.kickoff` |
+| **LlamaIndex** | `llamaindex_tracer` | — | Instrumentation EventHandler |
+| **OpenTelemetry** | OTLP endpoint | OTLP endpoint | Native OTLP ingestion |
+
 ## Features
 
 ### Observability
-- **Trace Explorer** — hierarchical trace trees showing agent runs, LLM calls, tool calls, retrievers, and errors
+- **Trace Explorer** — hierarchical trace trees: agent runs → LLM calls → tool calls → retrievers
 - **Cost Tracking** — per-model, per-agent cost breakdown with custom pricing support
-- **Token Analytics** — prompt/completion token counts auto-extracted from OpenAI, Anthropic, Gemini responses
+- **Auto Token Extraction** — tokens and model name auto-detected from OpenAI, Anthropic, Gemini responses
 - **Session Tracking** — group multi-turn conversations by session ID
 - **Real-time SSE** — live trace streaming to the dashboard
 
 ### Control Plane
 - **Policy Engine** — budget limits, rate limiting, tool permissions, runaway detection
-- **Kill Switch** — instantly halt agents that exceed budget or enter loops ([see how it works](#kill-switch))
+- **Kill Switch** — instantly halt agents that exceed budget or enter loops ([see demo](#kill-switch))
 - **PII Redaction** — automatic redaction of emails, phone numbers, SSNs in trace data
 - **Alerts & Webhooks** — policy violations create alerts and fire webhook notifications
 
-### SDKs (Python & TypeScript — feature parity)
+### SDKs — Python & TypeScript (1:1 feature parity)
 
 | Feature | Python | TypeScript |
 |---------|--------|------------|
 | Auto token extraction | `response=response` | `response: response` |
 | Kill switch | `AgentKilledException` | `AgentKilledException` |
 | Session tracking | `session_id="..."` | `sessionId: "..."` |
-| LLM call | `trace.llm_call()` | `trace.llmCallSpan()` |
-| Tool call | `trace.tool_call()` | `trace.toolCall()` |
-| Retriever span | `trace.retriever_call()` | `trace.retrieverCall()` |
-| Agent action span | `trace.agent_action()` | `trace.agentAction()` |
-| LangChain/LangGraph | Callback handler | Callback handler |
-| CrewAI, LlamaIndex | Framework tracers | — |
-| Google ADK | Plugin (`BasePlugin`) | — |
-| OpenTelemetry | OTLP ingestion | OTLP ingestion |
+| LLM / Tool / Retriever / Agent Action spans | All supported | All supported |
 
 ## Architecture
 
@@ -129,7 +136,6 @@ curl -X POST http://localhost:3001/api/projects \
 #### Python
 
 ```bash
-# Install from the local source (not published to PyPI)
 pip install -e sdks/python
 ```
 
@@ -155,9 +161,8 @@ with oa.trace("my-agent") as trace:
 # Link the local SDK (not published to npm)
 npm link ./sdks/typescript
 
-# Or add it as a file dependency in your project's package.json:
+# Or add as a file dependency in your package.json:
 #   "@orchestra-ai/sdk": "file:./path/to/OrchestraAI/sdks/typescript"
-# Then run: npm install
 ```
 
 ```typescript
@@ -227,22 +232,22 @@ try {
 }
 ```
 
-See full working demos: [`examples/kill_switch_demo.py`](examples/kill_switch_demo.py) | [`examples/kill_switch_demo.ts`](examples/kill_switch_demo.ts)
+See full demos: [`examples/kill_switch_demo.py`](examples/kill_switch_demo.py) | [`examples/kill_switch_demo.ts`](examples/kill_switch_demo.ts)
 
 ## Examples
 
-Every integration has a working example for both Python and TypeScript (where applicable):
+Every framework integration has a working, runnable example:
 
 | Example | Python | TypeScript |
 |---------|--------|------------|
 | **Basic tracing** (LLM + tools + retriever) | [`basic_tracing.py`](examples/basic_tracing.py) | [`basic_tracing.ts`](examples/basic_tracing.ts) |
 | **Kill switch** (budget-based agent halt) | [`kill_switch_demo.py`](examples/kill_switch_demo.py) | [`kill_switch_demo.ts`](examples/kill_switch_demo.ts) |
+| **OpenAI SDK** auto-traced completions | [`openai_agents.py`](examples/openai_agents.py) | [`openai_agents.ts`](examples/openai_agents.ts) |
 | **LangChain** ReAct agent with tools | [`langchain_agent.py`](examples/langchain_agent.py) | [`langchain_agent.ts`](examples/langchain_agent.ts) |
 | **LangGraph** auto-instrumented graph | [`langgraph_agent.py`](examples/langgraph_agent.py) | [`langgraph_agent.ts`](examples/langgraph_agent.ts) |
-| **OpenAI SDK** auto-traced completions | [`openai_agents.py`](examples/openai_agents.py) | [`openai_agents.ts`](examples/openai_agents.ts) |
+| **Google ADK** agent with plugin | [`google_adk_agent.py`](examples/google_adk_agent.py) | — |
 | **CrewAI** multi-agent crew | [`crewai_crew.py`](examples/crewai_crew.py) | — |
 | **LlamaIndex** RAG pipeline | [`llamaindex_rag.py`](examples/llamaindex_rag.py) | — |
-| **Google ADK** agent with plugin | [`google_adk_agent.py`](examples/google_adk_agent.py) | — |
 
 ```bash
 # Run any Python example
@@ -260,32 +265,24 @@ npx tsx examples/openai_agents.ts
 ```
 OrchestraAI/
 ├── apps/
-│   ├── api/             # NestJS backend API
-│   │   ├── src/
-│   │   │   ├── modules/
-│   │   │   │   ├── auth/        # JWT authentication
-│   │   │   │   ├── projects/    # Project management + API key hashing
-│   │   │   │   ├── agents/      # Agent registry
-│   │   │   │   ├── traces/      # Trace storage + tree builder
-│   │   │   │   ├── policies/    # Policy engine + alerts
-│   │   │   │   ├── ingest/      # SDK + OTLP ingestion
-│   │   │   │   ├── dashboard/   # Analytics queries
-│   │   │   │   ├── events/      # SSE real-time events
-│   │   │   │   └── prompts/     # Prompt versioning
-│   │   │   └── migrations/      # TypeORM migrations
-│   │   └── Dockerfile
-│   └── web/             # Next.js dashboard
-│       └── Dockerfile
-├── packages/
-│   └── shared/          # Shared types, enums, pricing constants
+│   ├── api/                # NestJS backend API
+│   │   ├── src/modules/    # auth, projects, agents, traces, policies, ingest, dashboard, events, prompts
+│   │   └── src/migrations/ # TypeORM migrations (auto-run on startup)
+│   └── web/                # Next.js 14 dashboard
+├── packages/shared/        # Shared types, enums, pricing constants
 ├── sdks/
-│   ├── python/          # Python SDK (pip install -e sdks/python)
-│   └── typescript/      # TypeScript SDK (npm link ./sdks/typescript)
-├── examples/            # Working examples for both languages
-├── tests/               # E2E integration tests
-├── infra/               # ClickHouse init scripts (future)
-├── docker-compose.yml
-└── turbo.json
+│   ├── python/             # Python SDK — pip install -e sdks/python
+│   │   └── orchestra_ai/
+│   │       ├── client.py, tracer.py, token_extraction.py
+│   │       └── integrations/  # langchain, langgraph, crewai, llamaindex, google_adk, openai
+│   └── typescript/         # TypeScript SDK — npm link ./sdks/typescript
+│       └── src/
+│           ├── client.ts, tracer.ts, token-extraction.ts
+│           └── integrations/  # langchain, langgraph, vercel-ai
+├── examples/               # 13 working examples (Python + TypeScript)
+├── tests/                  # E2E integration tests
+├── docker-compose.yml      # Postgres + Redis (ClickHouse optional)
+└── turbo.json              # Turborepo build config
 ```
 
 ## API Endpoints
@@ -306,23 +303,6 @@ OrchestraAI/
 | Events | GET | `/api/projects/:id/events/stream` | SSE stream |
 
 Full Swagger docs at `/api/docs` when the API is running.
-
-## Running Tests
-
-```bash
-# Set required env vars (from your project creation step)
-export ORCHESTRA_API_KEY=oai_your_key
-export ORCHESTRA_PROJECT_ID=your_project_id
-export ORCHESTRA_JWT_TOKEN=your_jwt_token
-
-# Python E2E tests
-python tests/langchain_test.py
-python tests/lmstudio_test.py
-
-# Examples
-python examples/basic_tracing.py
-npx tsx examples/basic_tracing.ts
-```
 
 ## Contributing
 
