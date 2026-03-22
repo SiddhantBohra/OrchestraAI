@@ -38,23 +38,15 @@ OrchestraAI is the missing infrastructure layer: **trace what agents do, control
 
 ## Architecture
 
-```
-┌─────────────┐     ┌──────────────────┐     ┌────────────────┐
-│  Your Agent  │────▶│  OrchestraAI SDK │────▶│  OrchestraAI   │
-│  (Python/TS) │     │  (auto-capture)  │     │  API (NestJS)  │
-└─────────────┘     └──────────────────┘     └───────┬────────┘
-                                                      │
-                          ┌───────────────────────────┼──────────────┐
-                          │                           │              │
-                    ┌─────▼─────┐            ┌───────▼──────┐ ┌────▼────┐
-                    │ PostgreSQL │            │ Policy Engine│ │  Redis  │
-                    │  (traces)  │            │  (evaluate)  │ │ (cache) │
-                    └───────────┘            └──────────────┘ └─────────┘
-                          │
-                    ┌─────▼─────┐
-                    │  Next.js   │
-                    │ Dashboard  │
-                    └───────────┘
+```mermaid
+graph LR
+    A["Your Agent<br/>(Python / TS)"] -->|traces| B["OrchestraAI SDK<br/>(auto-capture)"]
+    B -->|HTTP| C["OrchestraAI API<br/>(NestJS)"]
+    C --> D[(PostgreSQL<br/>traces & metadata)]
+    C --> E["Policy Engine<br/>(budget, rate limit,<br/>runaway, tools)"]
+    C --> F[(Redis<br/>cache)]
+    C -->|SSE| G["Next.js Dashboard<br/>(real-time)"]
+    D --> G
 ```
 
 ## Quick Start
