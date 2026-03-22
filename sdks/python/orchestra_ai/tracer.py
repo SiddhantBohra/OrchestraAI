@@ -40,9 +40,12 @@ class Span:
         self.metadata = metadata or {}
         self._data: Dict[str, Any] = {}
         self._streaming_tokens: list[str] = []
+        self._first_token_time: Optional[int] = None
 
     def add_token(self, token: str) -> None:
         """Accumulate a streaming token. Called by on_llm_new_token."""
+        if self._first_token_time is None:
+            self._first_token_time = int(datetime.now(timezone.utc).timestamp() * 1000)
         self._streaming_tokens.append(token)
 
     def set_data(self, **kwargs: Any) -> Span:
@@ -65,6 +68,10 @@ class Span:
         # If streaming tokens were accumulated, join them as output_preview
         if self._streaming_tokens and not self._data.get("output_preview"):
             self._data["output_preview"] = "".join(self._streaming_tokens)[:2000]
+
+        # Track time-to-first-token in metadata
+        if self._first_token_time is not None:
+            self.metadata["timeToFirstTokenMs"] = self._first_token_time - self.start_time
 
         # Auto-extract tokens from response if not manually provided
         response = self._data.get("response")

@@ -164,8 +164,8 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="pl-64">
-        <div className="min-h-screen">{children}</div>
+      <main className="pl-64 h-screen">
+        <div className="h-full">{children}</div>
       </main>
     </div>
   );

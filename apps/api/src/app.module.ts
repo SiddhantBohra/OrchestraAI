@@ -34,7 +34,7 @@ import { PromptsModule } from './modules/prompts/prompts.module';
         synchronize: false,
         migrationsRun: configService.get('NODE_ENV') !== 'test',
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        logging: configService.get('NODE_ENV') === 'development',
+        logging: false, // Set to true for SQL debugging, false for clean output
       }),
     }),
 

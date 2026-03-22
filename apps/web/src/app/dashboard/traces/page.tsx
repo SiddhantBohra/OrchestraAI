@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useProjectStore } from '@/lib/store';
-import { tracesApi } from '@/lib/api';
+import { tracesApi, getTraceStreamUrl } from '@/lib/api';
 import {
   formatDuration,
   formatDate,
@@ -11,6 +11,9 @@ import {
   formatCurrency,
   getStatusColor,
   getTraceTypeColor,
+  getTraceTypeIconColor,
+  getTraceTypeLabel,
+  getDurationBarColor,
 } from '@/lib/utils';
 import {
   Search,
@@ -27,11 +30,13 @@ import {
   Database,
   User,
   Hash,
-  Tag,
   Copy,
   Check,
   Activity,
   Shield,
+  Bot,
+  ArrowRight,
+  Layers,
 } from 'lucide-react';
 
 // ─── Icon mapping ─────────────────────────────────────────────
@@ -42,9 +47,10 @@ function TraceTypeIcon({ type, className = 'h-3.5 w-3.5' }: { type: string; clas
     case 'tool_call': return <Wrench className={className} />;
     case 'retriever': return <Database className={className} />;
     case 'agent_action': return <Zap className={className} />;
-    case 'agent_run': return <Activity className={className} />;
+    case 'agent_run': return <Bot className={className} />;
     case 'human_input': return <User className={className} />;
     case 'error': return <AlertTriangle className={className} />;
+    case 'step': return <Layers className={className} />;
     default: return <MessageSquare className={className} />;
   }
 }
@@ -56,7 +62,7 @@ function CopyableId({ label, value }: { label: string; value: string }) {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
+      className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
       title={`${label}: ${value}`}
     >
       {copied ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
@@ -69,11 +75,11 @@ function CopyableId({ label, value }: { label: string; value: string }) {
 
 function Badge({ icon, label, color = 'gray' }: { icon: React.ReactNode; label: string; color?: string }) {
   const colors: Record<string, string> = {
-    gray: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300',
-    purple: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-    green: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    gray: 'bg-gray-100 text-gray-600 dark:bg-gray-500/15 dark:text-gray-300',
+    purple: 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
+    green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
   };
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${colors[color] || colors.gray}`}>
@@ -86,30 +92,69 @@ function Badge({ icon, label, color = 'gray' }: { icon: React.ReactNode; label: 
 
 export default function TracesPage() {
   const { currentProject } = useProjectStore();
+  const queryClient = useQueryClient();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<any | null>(null);
   const [filter, setFilter] = useState({ status: '', search: '' });
+  const [isLive, setIsLive] = useState(true);
+  const [panelWidths, setPanelWidths] = useState({ left: 260, right: 420 });
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const { data: agentRuns, isLoading } = useQuery({
     queryKey: ['agent-runs', currentProject?.id, filter],
     queryFn: () => tracesApi.list(currentProject!.id, { type: 'agent_run', status: filter.status || undefined, limit: 100 }),
     enabled: !!currentProject,
-    refetchInterval: 3000, // Poll every 3 seconds for real-time updates
+    refetchInterval: 5000, // Fallback polling (SSE handles real-time)
   });
 
   const { data: traceTree } = useQuery({
     queryKey: ['trace-tree', currentProject?.id, selectedTraceId],
     queryFn: () => tracesApi.getTree(currentProject!.id, selectedTraceId!),
     enabled: !!currentProject && !!selectedTraceId,
-    refetchInterval: 3000,
+    refetchInterval: 5000, // Fallback polling
   });
 
+  // ── SSE: Real-time trace updates ──────────────────────────────
+  useEffect(() => {
+    if (!currentProject?.id || !isLive) return;
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
+    const url = `${getTraceStreamUrl(currentProject.id)}?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'heartbeat') return;
+
+        // Invalidate relevant queries so they refetch instantly
+        queryClient.invalidateQueries({ queryKey: ['agent-runs', currentProject.id] });
+        if (selectedTraceId && data.traceId === selectedTraceId) {
+          queryClient.invalidateQueries({ queryKey: ['trace-tree', currentProject.id, selectedTraceId] });
+        }
+      } catch {
+        // Ignore parse errors from heartbeats
+      }
+    };
+
+    es.onerror = () => {
+      // EventSource auto-reconnects; no action needed
+    };
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [currentProject?.id, isLive, selectedTraceId, queryClient]);
+
   if (!currentProject) {
-    return <div className="p-8 text-center text-gray-500">Please select a project first.</div>;
+    return <div className="p-8 text-center text-gray-500 dark:text-gray-400">Please select a project first.</div>;
   }
 
   // Deduplicate agent runs: keep latest status per traceId
-  // (the API returns both "started" and "completed" events for the same trace)
   const rawRuns = agentRuns?.data || [];
   const runMap = new Map<string, any>();
   for (const run of rawRuns) {
@@ -124,14 +169,17 @@ export default function TracesPage() {
   // Compute aggregate stats for the selected trace
   const traceStats = tree.length > 0 ? computeTraceStats(tree) : null;
 
+  // Auto-select first span when tree loads and nothing is selected
+  const firstLeafSpan = tree.length > 0 && !selectedSpan ? findFirstLeaf(tree) : null;
+
   return (
     <div className="h-full flex flex-col">
       {/* Top bar */}
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-        <div className="flex items-center justify-between mb-3">
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700/80 bg-white dark:bg-slate-800">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Trace Explorer</h1>
-            <p className="text-xs text-gray-500">Debug and analyze agent execution traces</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Debug and analyze agent execution traces</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -141,7 +189,7 @@ export default function TracesPage() {
                 value={filter.search}
                 onChange={(e) => setFilter({ ...filter, search: e.target.value })}
                 placeholder="Search traces..."
-                className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white w-56"
+                className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder:text-gray-400 w-56 focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition"
               />
             </div>
             <select
@@ -155,23 +203,34 @@ export default function TracesPage() {
               <option value="started">Running</option>
               <option value="timeout">Timeout</option>
             </select>
+            <button
+              onClick={() => setIsLive(!isLive)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition ${
+                isLive
+                  ? 'border-emerald-300 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                  : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+              {isLive ? 'Live' : 'Paused'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Three-panel layout */}
+      {/* Three-panel resizable layout */}
       <div className="flex-1 flex min-h-0">
         {/* Left — Agent Runs List */}
-        <div className="w-72 border-r border-gray-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800">
-          <div className="px-3 py-2 border-b border-gray-100 dark:border-slate-700 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div style={{ width: panelWidths.left }} className="flex-shrink-0 border-r border-gray-200 dark:border-slate-700/80 flex flex-col bg-white dark:bg-slate-800/50">
+          <div className="px-3 py-2.5 border-b border-gray-100 dark:border-slate-700/60 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Agent Runs {runs.length > 0 && `(${runs.length})`}
           </div>
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
               [...Array(8)].map((_, i) => (
-                <div key={i} className="px-3 py-2.5 animate-pulse border-b border-gray-100 dark:border-slate-700">
-                  <div className="h-3.5 bg-gray-200 dark:bg-slate-700 rounded w-3/4 mb-1.5" />
-                  <div className="h-2.5 bg-gray-200 dark:bg-slate-700 rounded w-1/2" />
+                <div key={i} className="px-3 py-3 animate-pulse border-b border-gray-100 dark:border-slate-700/40">
+                  <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-1/2" />
                 </div>
               ))
             ) : runs.length > 0 ? (
@@ -181,50 +240,56 @@ export default function TracesPage() {
                 <button
                   key={run.id}
                   onClick={() => { setSelectedTraceId(run.traceId); setSelectedSpan(null); }}
-                  className={`w-full px-3 py-2.5 text-left border-b border-gray-100 dark:border-slate-700 transition ${
+                  className={`w-full px-3 py-3 text-left border-b border-gray-100 dark:border-slate-700/40 transition-colors ${
                     selectedTraceId === run.traceId
-                      ? 'bg-purple-50 dark:bg-purple-900/20 border-l-2 border-l-purple-500'
-                      : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+                      ? 'bg-purple-50 dark:bg-purple-500/10 border-l-2 border-l-purple-500'
+                      : 'hover:bg-gray-50 dark:hover:bg-slate-700/30'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-medium text-xs text-gray-900 dark:text-white truncate">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-[13px] text-gray-900 dark:text-gray-100 truncate">
                       {run.agentName || run.name}
                     </span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${getStatusColor(run.status)}`}>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${getStatusColor(run.status)}`}>
                       {run.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                  <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
                     {run.durationMs != null && (
-                      <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{formatDuration(run.durationMs)}</span>
+                      <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{formatDuration(run.durationMs)}</span>
                     )}
                     {run.totalTokens != null && run.totalTokens > 0 && (
-                      <span className="flex items-center gap-0.5"><Zap className="h-2.5 w-2.5" />{formatNumber(run.totalTokens)}</span>
+                      <span className="flex items-center gap-0.5"><Zap className="h-3 w-3" />{formatNumber(run.totalTokens)}</span>
                     )}
                     {run.cost != null && Number(run.cost) > 0 && (
-                      <span className="flex items-center gap-0.5"><DollarSign className="h-2.5 w-2.5" />{formatCurrency(Number(run.cost))}</span>
+                      <span className="flex items-center gap-0.5"><DollarSign className="h-3 w-3" />{formatCurrency(Number(run.cost))}</span>
                     )}
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-0.5">{formatDate(run.createdAt)}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{formatDate(run.createdAt)}</p>
                 </button>
               ))
             ) : (
-              <div className="px-4 py-12 text-center text-gray-400 text-xs">
+              <div className="px-4 py-12 text-center text-gray-400 dark:text-gray-500 text-xs">
                 No agent runs yet.<br />Send traces via the SDK to see them here.
               </div>
             )}
           </div>
         </div>
 
+        {/* Resize handle: Left ↔ Middle */}
+        <ResizeHandle onResize={(dx) => setPanelWidths(prev => ({
+          ...prev,
+          left: Math.max(180, Math.min(500, prev.left + dx)),
+        }))} />
+
         {/* Middle — Trace Tree + Header */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-gray-200 dark:border-slate-700">
+        <div className="flex-1 flex flex-col min-w-[300px]">
           {/* Trace header with stats */}
           {selectedTraceId && traceStats && (
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700/60 bg-gray-50/80 dark:bg-slate-800/80">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {traceStats.agentName && (
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{traceStats.agentName}</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">{traceStats.agentName}</span>
                 )}
                 <CopyableId label="Trace ID" value={selectedTraceId} />
               </div>
@@ -259,32 +324,40 @@ export default function TracesPage() {
                 ))}
               </div>
             ) : selectedTraceId ? (
-              <div className="text-center text-gray-400 py-12 text-xs">Loading trace tree...</div>
+              <div className="text-center text-gray-400 dark:text-gray-500 py-12 text-xs">Loading trace tree...</div>
             ) : (
-              <div className="text-center text-gray-400 py-20 text-xs">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                Select an agent run to view its trace tree
-              </div>
+              <EmptyState
+                icon={<Activity className="h-10 w-10" />}
+                title="No trace selected"
+                description="Select an agent run from the left panel to inspect its execution trace"
+              />
             )}
           </div>
         </div>
 
+        {/* Resize handle: Middle ↔ Right */}
+        <ResizeHandle onResize={(dx) => setPanelWidths(prev => ({
+          ...prev,
+          right: Math.max(280, Math.min(700, prev.right - dx)),
+        }))} />
+
         {/* Right — Span Detail */}
-        <div className="w-[420px] flex flex-col bg-white dark:bg-slate-800">
-          <div className="px-4 py-2.5 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              {selectedSpan ? 'Span Details' : 'Details'}
+        <div style={{ width: panelWidths.right }} className="flex-shrink-0 flex flex-col bg-white dark:bg-slate-800/50">
+          <div className="px-4 py-2.5 border-b border-gray-200 dark:border-slate-700/60 flex items-center justify-between">
+            <h3 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              {selectedSpan || firstLeafSpan ? 'Span Details' : 'Details'}
             </h3>
-            {selectedSpan && (
-              <button onClick={() => setSelectedSpan(null)} className="text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+            {(selectedSpan || firstLeafSpan) && (
+              <button onClick={() => setSelectedSpan(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"><X className="h-3.5 w-3.5" /></button>
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
-            {selectedSpan ? <SpanDetail span={selectedSpan} /> : (
-              <div className="text-center text-gray-400 py-20 text-xs">
-                <Shield className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                Click a span in the tree to view details
-              </div>
+            {(selectedSpan || firstLeafSpan) ? <SpanDetail span={selectedSpan || firstLeafSpan} /> : (
+              <EmptyState
+                icon={<Shield className="h-10 w-10" />}
+                title="No span selected"
+                description={selectedTraceId ? "Click a span in the trace tree to view its details" : "Select a trace first, then click any span"}
+              />
             )}
           </div>
         </div>
@@ -315,6 +388,18 @@ function computeTraceStats(tree: any[]): any {
   return { totalCost, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, totalDuration, agentName, sessionId, userId };
 }
 
+/** Find the first meaningful span in the tree for auto-select */
+function findFirstLeaf(nodes: any[]): any | null {
+  for (const n of nodes) {
+    if (n.children && n.children.length > 0) {
+      const found = findFirstLeaf(n.children);
+      if (found) return found;
+    }
+    return n;
+  }
+  return null;
+}
+
 // ─── Trace Tree Node ──────────────────────────────────────────
 
 function TraceNode({ node, depth, selectedSpanId, onSelect, maxDuration }: {
@@ -325,63 +410,77 @@ function TraceNode({ node, depth, selectedSpanId, onSelect, maxDuration }: {
   const isSelected = node.spanId === selectedSpanId;
   const durationPct = maxDuration > 0 ? Math.max(2, (node.durationMs || 0) / maxDuration * 100) : 0;
 
+  // Display name: for LLM calls, show "llm:model" like Langfuse
+  const displayName = node.type === 'llm_call' && node.model
+    ? `llm:${node.model}`
+    : node.type === 'tool_call' && node.toolName
+      ? `tool:${node.toolName}`
+      : node.name;
+
   return (
     <div>
       <div
-        style={{ paddingLeft: depth * 16 + 4 }}
-        className={`group flex items-center gap-1 py-1 px-1 rounded-md cursor-pointer text-[11px] transition-all ${
-          isSelected ? 'bg-purple-100 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700' : 'hover:bg-gray-100 dark:hover:bg-slate-700/40'
+        style={{ paddingLeft: depth * 20 + 4 }}
+        className={`group flex items-center gap-1.5 py-1.5 px-1.5 rounded-md cursor-pointer text-[12px] transition-all ${
+          isSelected
+            ? 'bg-purple-100 dark:bg-purple-500/15 ring-1 ring-purple-400/50 dark:ring-purple-500/40'
+            : 'hover:bg-gray-100 dark:hover:bg-slate-700/40'
         }`}
         onClick={() => onSelect(node)}
       >
         {/* Tree connector line */}
         {depth > 0 && (
-          <div className="w-3 h-px bg-gray-300 dark:bg-slate-600 flex-shrink-0 -ml-1 mr-0.5" />
+          <div className="w-3 h-px bg-gray-300 dark:bg-slate-600 flex-shrink-0 -ml-1.5 mr-0" />
         )}
 
         {/* Expand toggle */}
         <button
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-          className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center"
+          className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
         >
           {hasChildren ? (
-            expanded ? <ChevronDown className="h-2.5 w-2.5 text-gray-400" /> : <ChevronRight className="h-2.5 w-2.5 text-gray-400" />
-          ) : <div className="w-2.5" />}
+            expanded ? <ChevronDown className="h-3 w-3 text-gray-500 dark:text-gray-400" /> : <ChevronRight className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+          ) : <div className="w-3" />}
         </button>
 
-        {/* Type icon + badge */}
-        <span className={`flex items-center gap-0.5 text-[9px] px-1.5 py-px rounded font-medium flex-shrink-0 ${getTraceTypeColor(node.type)}`}>
-          <TraceTypeIcon type={node.type} className="h-2.5 w-2.5" />
+        {/* Type badge with icon + label */}
+        <span className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold flex-shrink-0 ${getTraceTypeColor(node.type)}`}>
+          <TraceTypeIcon type={node.type} className="h-3 w-3" />
+          <span>{getTraceTypeLabel(node.type)}</span>
         </span>
 
         {/* Name */}
-        <span className="flex-1 truncate text-gray-800 dark:text-gray-200 font-medium">
-          {node.name}
+        <span className={`flex-1 truncate font-medium ${
+          isSelected ? 'text-purple-900 dark:text-purple-200' : 'text-gray-800 dark:text-gray-200'
+        }`}>
+          {displayName}
         </span>
 
-        {/* Token counts (like Langfuse: "1,024 → 384 (Σ 1,408)") */}
+        {/* Token counts */}
         {(node.promptTokens || node.completionTokens) && (
-          <span className="text-[9px] text-gray-400 flex-shrink-0 font-mono">
-            {formatNumber(node.promptTokens || 0)}→{formatNumber(node.completionTokens || 0)}
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0 font-mono flex items-center gap-0.5">
+            <span className="text-blue-600 dark:text-blue-400">{formatNumber(node.promptTokens || 0)}</span>
+            <ArrowRight className="h-2.5 w-2.5 text-gray-400" />
+            <span className="text-emerald-600 dark:text-emerald-400">{formatNumber(node.completionTokens || 0)}</span>
           </span>
         )}
 
         {/* Cost */}
         {node.cost != null && Number(node.cost) > 0 && (
-          <span className="text-[9px] text-green-600 dark:text-green-400 flex-shrink-0 font-mono">
+          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex-shrink-0 font-semibold">
             {formatCurrency(Number(node.cost))}
           </span>
         )}
 
-        {/* Duration with proportional bar */}
-        <div className="flex items-center gap-1 flex-shrink-0 w-20">
-          <div className="flex-1 h-1 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+        {/* Duration with proportional bar (heat-map colored) */}
+        <div className="flex items-center gap-1 flex-shrink-0 w-24">
+          <div className="flex-1 h-1.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full ${node.status === 'failed' ? 'bg-red-400' : 'bg-purple-400'}`}
+              className={`h-full rounded-full transition-all ${getDurationBarColor(durationPct, node.status === 'failed')}`}
               style={{ width: `${durationPct}%` }}
             />
           </div>
-          <span className="text-[9px] text-gray-500 w-8 text-right">{formatDuration(node.durationMs || 0)}</span>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 w-10 text-right font-mono">{formatDuration(node.durationMs || 0)}</span>
         </div>
       </div>
 
@@ -396,16 +495,16 @@ function TraceNode({ node, depth, selectedSpanId, onSelect, maxDuration }: {
 
 function SpanDetail({ span }: { span: any }) {
   return (
-    <div className="divide-y divide-gray-100 dark:divide-slate-700">
+    <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
       {/* Header */}
       <div className="px-4 py-3">
-        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-          <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${getTraceTypeColor(span.type)}`}>
-            <span className="flex items-center gap-1"><TraceTypeIcon type={span.type} className="h-3 w-3" />{span.type}</span>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <span className={`text-[10px] px-2 py-0.5 rounded font-semibold flex items-center gap-1 ${getTraceTypeColor(span.type)}`}>
+            <TraceTypeIcon type={span.type} className="h-3 w-3" />{getTraceTypeLabel(span.type)}
           </span>
-          <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${getStatusColor(span.status)}`}>{span.status}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${getStatusColor(span.status)}`}>{span.status}</span>
         </div>
-        <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-1">{span.name}</h4>
+        <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1.5">{span.name}</h4>
         <div className="flex items-center gap-2 flex-wrap">
           {span.agentName && <Badge icon={<Activity className="h-2.5 w-2.5" />} label={span.agentName} />}
           {span.spanId && <CopyableId label="Span" value={span.spanId} />}
@@ -414,7 +513,7 @@ function SpanDetail({ span }: { span: any }) {
 
       {/* Metrics grid */}
       <div className="px-4 py-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2.5">
           {span.durationMs != null && <MetricCard label="Latency" value={formatDuration(span.durationMs)} icon={<Clock className="h-3.5 w-3.5" />} />}
           {span.model && <MetricCard label="Model" value={span.model} icon={<Brain className="h-3.5 w-3.5" />} />}
           {(span.promptTokens || span.completionTokens) && (
@@ -427,6 +526,9 @@ function SpanDetail({ span }: { span: any }) {
           )}
           {span.cost != null && Number(span.cost) > 0 && <MetricCard label="Cost" value={formatCurrency(Number(span.cost))} icon={<DollarSign className="h-3.5 w-3.5" />} />}
           {span.toolName && <MetricCard label="Tool" value={span.toolName} icon={<Wrench className="h-3.5 w-3.5" />} />}
+          {span.metadata?.timeToFirstTokenMs != null && (
+            <MetricCard label="Time to First Token" value={formatDuration(span.metadata.timeToFirstTokenMs)} icon={<Zap className="h-3.5 w-3.5" />} />
+          )}
         </div>
       </div>
 
@@ -445,10 +547,10 @@ function SpanDetail({ span }: { span: any }) {
       {/* Error */}
       {span.errorMessage && (
         <div className="px-4 py-3">
-          <h5 className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+          <h5 className="text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1">
             <AlertTriangle className="h-3 w-3" /> Error {span.errorType && `(${span.errorType})`}
           </h5>
-          <pre className="text-[11px] bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-2.5 rounded-lg whitespace-pre-wrap max-h-40 overflow-y-auto border border-red-200 dark:border-red-800">
+          <pre className="text-[11px] bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 p-3 rounded-lg whitespace-pre-wrap max-h-40 overflow-y-auto border border-red-200 dark:border-red-500/20">
             {span.errorMessage}
           </pre>
         </div>
@@ -461,12 +563,24 @@ function SpanDetail({ span }: { span: any }) {
 
       {/* Timing + IDs */}
       <div className="px-4 py-3">
-        <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Timing & IDs</h5>
-        <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 font-mono">
-          <span>Start: {span.startTime ? new Date(Number(span.startTime)).toISOString() : '—'}</span>
-          <span>End: {span.endTime ? new Date(Number(span.endTime)).toISOString() : '—'}</span>
-          <span>Span: {span.spanId}</span>
-          <span>Parent: {span.parentSpanId || '—'}</span>
+        <h5 className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Timing & IDs</h5>
+        <div className="grid grid-cols-2 gap-y-1.5 gap-x-3 text-[11px]">
+          <div>
+            <span className="text-gray-400 dark:text-gray-500">Start</span>
+            <p className="font-mono text-gray-700 dark:text-gray-300">{span.startTime ? new Date(Number(span.startTime)).toISOString() : '—'}</p>
+          </div>
+          <div>
+            <span className="text-gray-400 dark:text-gray-500">End</span>
+            <p className="font-mono text-gray-700 dark:text-gray-300">{span.endTime ? new Date(Number(span.endTime)).toISOString() : '—'}</p>
+          </div>
+          <div>
+            <span className="text-gray-400 dark:text-gray-500">Span ID</span>
+            <p className="font-mono text-gray-700 dark:text-gray-300 truncate">{span.spanId}</p>
+          </div>
+          <div>
+            <span className="text-gray-400 dark:text-gray-500">Parent</span>
+            <p className="font-mono text-gray-700 dark:text-gray-300 truncate">{span.parentSpanId || '—'}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -477,12 +591,12 @@ function SpanDetail({ span }: { span: any }) {
 
 function MetricCard({ label, value, sub, icon }: { label: string; value: string; sub?: string; icon: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 bg-gray-50 dark:bg-slate-900/50 rounded-lg p-2">
-      <div className="text-gray-400 mt-0.5">{icon}</div>
-      <div>
-        <p className="text-[9px] text-gray-400 uppercase tracking-wider">{label}</p>
-        <p className="text-xs font-semibold text-gray-900 dark:text-white">{value}</p>
-        {sub && <p className="text-[9px] text-gray-400">{sub}</p>}
+    <div className="flex items-start gap-2.5 bg-gray-50 dark:bg-slate-900/50 rounded-lg p-2.5 border border-gray-100 dark:border-slate-700/40">
+      <div className="text-gray-400 dark:text-gray-500 mt-0.5">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium">{label}</p>
+        <p className="text-[13px] font-semibold text-gray-900 dark:text-white truncate">{value}</p>
+        {sub && <p className="text-[10px] text-gray-400 dark:text-gray-500">{sub}</p>}
       </div>
     </div>
   );
@@ -493,9 +607,14 @@ function MetricCard({ label, value, sub, icon }: { label: string; value: string;
 function IOSection({ title, content, variant }: { title: string; content: string; variant: 'input' | 'output' | 'json' }) {
   const [expanded, setExpanded] = useState(true);
   const colors = {
-    input: 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10',
-    output: 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10',
-    json: 'border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900',
+    input: 'border-blue-200 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/5',
+    output: 'border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/5',
+    json: 'border-gray-200 dark:border-slate-600/40 bg-gray-50 dark:bg-slate-900/50',
+  };
+  const titleColors = {
+    input: 'text-blue-600 dark:text-blue-400',
+    output: 'text-emerald-600 dark:text-emerald-400',
+    json: 'text-gray-500 dark:text-gray-400',
   };
 
   // Try to pretty-print JSON
@@ -512,17 +631,68 @@ function IOSection({ title, content, variant }: { title: string; content: string
     <div className="px-4 py-3">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5 hover:text-gray-700 dark:hover:text-gray-300"
+        className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider mb-2 hover:opacity-80 transition ${titleColors[variant]}`}
       >
-        {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         {title}
-        <span className="text-gray-400 font-normal normal-case">({content.length} chars)</span>
+        <span className="text-gray-400 dark:text-gray-500 font-normal normal-case">({content.length} chars)</span>
       </button>
       {expanded && (
-        <pre className={`text-[11px] p-2.5 rounded-lg whitespace-pre-wrap max-h-48 overflow-y-auto border text-gray-800 dark:text-gray-200 ${colors[variant]}`}>
+        <pre className={`text-[12px] p-3 rounded-lg whitespace-pre-wrap max-h-60 overflow-y-auto border text-gray-800 dark:text-gray-200 leading-relaxed ${colors[variant]}`}>
           {displayContent}
         </pre>
       )}
+    </div>
+  );
+}
+
+// ─── Resize Handle ────────────────────────────────────────────
+
+function ResizeHandle({ onResize }: { onResize: (dx: number) => void }) {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let lastX = e.clientX;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - lastX;
+      lastX = moveEvent.clientX;
+      onResize(dx);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="w-1 flex-shrink-0 cursor-col-resize group relative hover:bg-purple-500/30 active:bg-purple-500/50 transition-colors"
+    >
+      <div className="absolute inset-y-0 -left-1 -right-1" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 rounded-full bg-gray-300 dark:bg-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────
+
+function EmptyState({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full py-20 px-6">
+      <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-slate-700/50 text-gray-400 dark:text-gray-500 mb-4">
+        {icon}
+      </div>
+      <h4 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-1">{title}</h4>
+      <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-[200px]">{description}</p>
     </div>
   );
 }

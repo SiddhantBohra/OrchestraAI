@@ -97,6 +97,12 @@ export const policiesApi = {
   createDefaults: (projectId: string) => api.post(`/projects/${projectId}/policies/defaults`),
 };
 
+// Events SSE — returns the full EventSource URL with auth
+export function getTraceStreamUrl(projectId: string): string {
+  const base = API_URL.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${API_URL}` : API_URL;
+  return `${base}/projects/${projectId}/events/stream`;
+}
+
 // Dashboard API
 export const dashboardApi = {
   overview: (projectId: string) => api.get(`/projects/${projectId}/dashboard/overview`),

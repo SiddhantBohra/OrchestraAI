@@ -207,12 +207,38 @@ export class TracesService {
     return Math.round((inputCost + outputCost) * 1000000) / 1000000;
   }
 
+  // Internal LangChain/LangGraph runnables that add noise to the trace tree
+  private static readonly NOISE_NAMES = new Set([
+    'RunnableSequence', 'RunnableLambda', 'RunnableParallel',
+    'RunnablePassthrough', 'RunnableAssign',
+    'ChannelWrite', 'ChannelRead',
+    '__start__', '__end__',
+  ]);
+
   private buildTree(traces: Trace[]): any[] {
     const map = new Map<string, any>();
     const roots: any[] = [];
 
-    // Create nodes — include ALL fields for the detail panel
+    // Deduplicate by spanId — keep the version with most data (completed > started)
     for (const trace of traces) {
+      // Filter out noisy internal LangChain runnables
+      if (TracesService.NOISE_NAMES.has(trace.name)) continue;
+      const existing = map.get(trace.spanId);
+      if (existing) {
+        // Keep the one with endTime (completed), or the later one
+        if (trace.endTime && !existing.endTime) {
+          existing.status = trace.status;
+          existing.endTime = trace.endTime;
+          existing.durationMs = trace.durationMs || existing.durationMs;
+          existing.output = trace.output || existing.output;
+          existing.cost = trace.cost || existing.cost;
+          existing.totalTokens = trace.totalTokens || existing.totalTokens;
+          existing.promptTokens = trace.promptTokens || existing.promptTokens;
+          existing.completionTokens = trace.completionTokens || existing.completionTokens;
+        }
+        continue;
+      }
+
       map.set(trace.spanId, {
         id: trace.id,
         spanId: trace.spanId,
@@ -242,11 +268,10 @@ export class TracesService {
       });
     }
 
-    // Build tree
-    for (const trace of traces) {
-      const node = map.get(trace.spanId)!;
-      if (trace.parentSpanId && map.has(trace.parentSpanId)) {
-        map.get(trace.parentSpanId)!.children!.push(node);
+    // Build tree from deduplicated nodes
+    for (const node of map.values()) {
+      if (node.parentSpanId && map.has(node.parentSpanId)) {
+        map.get(node.parentSpanId)!.children!.push(node);
       } else {
         roots.push(node);
       }

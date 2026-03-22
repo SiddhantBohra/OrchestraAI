@@ -1,8 +1,11 @@
 /**
- * LangChain integration for OrchestraAI SDK
+ * LangChain/LangGraph integration for OrchestraAI SDK
  *
  * Creates ONE trace per top-level invocation and nests all internal
  * chains, LLM calls, tool calls, and retrievers as child spans.
+ *
+ * Filters out noisy internal runnables (RunnableSequence, RunnableLambda,
+ * ChannelWrite, etc.) to keep the trace tree clean and readable.
  */
 
 import type { OrchestraAI } from '../client';
@@ -18,6 +21,19 @@ function preview(value: unknown, max = 500): string | undefined {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
+// Internal LangChain/LangGraph runnables that add noise to the trace tree
+const NOISE_RUNNABLES = new Set([
+  'RunnableSequence',
+  'RunnableLambda',
+  'RunnableParallel',
+  'RunnablePassthrough',
+  'RunnableAssign',
+  'ChannelWrite',
+  'ChannelRead',
+  '__start__',
+  '__end__',
+]);
+
 export interface LangChainHandlerOptions {
   /** OrchestraAI client */
   client: OrchestraAI;
@@ -25,8 +41,14 @@ export interface LangChainHandlerOptions {
   agentName?: string;
   /** Session ID for multi-turn conversations */
   sessionId?: string;
+  /** User ID for per-user attribution */
+  userId?: string;
+  /** Tags for trace organization */
+  tags?: string[];
   /** Default metadata for all spans */
   metadata?: Record<string, unknown>;
+  /** Show internal runnables (RunnableSequence, etc.) in the trace tree. Default: false */
+  showInternalRunnables?: boolean;
 }
 
 /**
@@ -37,33 +59,54 @@ export interface LangChainHandlerOptions {
  * const handler = createLangChainHandler({ client: oa });
  * await graph.invoke(input, { callbacks: [handler] });
  * ```
- *
- * Everything is auto-detected: agent name from the chain, model from the LLM,
- * tokens from the response. Override with options if needed.
  */
 export function createLangChainHandler(options: LangChainHandlerOptions): any {
   let rootTrace: Trace | null = null;
   const spans = new Map<string, Span>();
-  const runToParent = new Map<string, string>(); // runId → parentRunId
+  const runToParent = new Map<string, string>();
+  const skippedRuns = new Set<string>(); // runs that were filtered as noise
+  const showNoise = options.showInternalRunnables ?? false;
 
-  /** Get or create the root trace. Only the first chain creates a trace. */
   function ensureTrace(runId: string, parentRunId?: string, autoName?: string): Trace {
     if (parentRunId) runToParent.set(runId, parentRunId);
 
     if (!rootTrace) {
-      // Auto-detect name: explicit option > chain/graph name > fallback
-      const traceName = options.agentName || autoName || 'agent';
+      // Prefer user-supplied name > auto-detected name (but skip generic class names)
+      const genericNames = new Set(['CompiledStateGraph', 'RunnableSequence', 'RunnableLambda', 'AgentExecutor']);
+      const traceName = options.agentName
+        || (autoName && !genericNames.has(autoName) ? autoName : null)
+        || 'agent';
       rootTrace = options.client.startTrace(traceName, {
         sessionId: options.sessionId,
+        userId: options.userId,
+        tags: options.tags,
         metadata: { ...options.metadata, framework: 'langchain' },
       });
     }
     return rootTrace;
   }
 
-  /** Check if this is the root run (no parent). */
   function isRootRun(runId: string): boolean {
     return !runToParent.has(runId);
+  }
+
+  /** Extract the human-readable name from a serialized LangChain object */
+  function getName(serialized: any, ...fallbackKeys: string[]): string {
+    // Try: serialized.name, serialized.kwargs.name, serialized.id[-1]
+    if (serialized?.name) return serialized.name;
+    if (serialized?.kwargs?.name) return serialized.kwargs.name;
+    for (const key of fallbackKeys) {
+      if (serialized?.[key]) return serialized[key];
+    }
+    if (serialized?.id && Array.isArray(serialized.id)) {
+      return serialized.id[serialized.id.length - 1] || 'unknown';
+    }
+    return 'unknown';
+  }
+
+  /** Check if a chain name is internal noise */
+  function isNoise(name: string): boolean {
+    return !showNoise && NOISE_RUNNABLES.has(name);
   }
 
   return {
@@ -71,19 +114,32 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
 
     // ── Chain (graph/sequence/runnable) ──────────────────────
 
-    handleChainStart(serialized: any, inputs: any, runId: string, parentRunId?: string): void {
-      const trace = ensureTrace(runId, parentRunId, serialized?.name);
-      const chainName = serialized?.id?.[serialized.id.length - 1]
-        || serialized?.name
-        || 'chain';
+    // Match Langfuse's proven signature: (chain, inputs, runId, parentRunId?, tags?, metadata?, runType?, name?)
+    async handleChainStart(serialized: any, inputs: any, runId: string, parentRunId?: string, _tags?: string[], _metadata?: Record<string, unknown>, _runType?: string, name?: string): Promise<void> {
+      const nodeName = name ?? serialized?.id?.at?.(-1)?.toString(); // Same logic as Langfuse
+      const serializedName = getName(serialized);
+      const chainName = nodeName || serializedName;
 
-      const span = trace.step(chainName, {
-        metadata: { framework: 'langchain', runId, inputs: preview(inputs, 200) },
+      // Skip noise — but NEVER skip if runName is a real node name
+      if (!nodeName && isNoise(chainName)) {
+        skippedRuns.add(runId);
+        if (parentRunId) runToParent.set(runId, parentRunId);
+        return;
+      }
+
+      const displayName = nodeName || serializedName;
+      const trace = ensureTrace(runId, parentRunId, displayName);
+
+      const span = trace.step(displayName, {
+        metadata: { framework: 'langchain', runId },
       });
+      span.setData({ inputPreview: preview(inputs, 500) });
       spans.set(runId, span);
     },
 
     handleChainEnd(outputs: any, runId: string): void {
+      if (skippedRuns.delete(runId)) return; // was filtered
+
       const span = spans.get(runId);
       if (span) {
         span.setData({ outputPreview: preview(outputs) });
@@ -91,15 +147,17 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
         spans.delete(runId);
       }
 
-      // If this is the root run, end the trace
       if (isRootRun(runId) && rootTrace) {
         rootTrace.end();
         rootTrace = null;
         runToParent.clear();
+        skippedRuns.clear();
       }
     },
 
     handleChainError(error: any, runId: string): void {
+      if (skippedRuns.delete(runId)) return;
+
       const span = spans.get(runId);
       if (span) {
         span.setError(error instanceof Error ? error : new Error(String(error)));
@@ -112,6 +170,7 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
         rootTrace.end();
         rootTrace = null;
         runToParent.clear();
+        skippedRuns.clear();
       }
     },
 
@@ -128,11 +187,11 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
       spans.set(runId, span);
     },
 
-    handleChatModelStart(llm: any, messages: any[][], runId: string, parentRunId?: string): void {
+    // (llm, messages, runId, parentRunId?, extraParams?, tags?, metadata?, runName?)
+    handleChatModelStart(llm: any, messages: any[][], runId: string, parentRunId?: string, _extra?: any, _tags2?: string[], _meta?: any, _runName?: string): void {
       const trace = ensureTrace(runId, parentRunId);
       const model = llm?.kwargs?.model || llm?.kwargs?.model_name || llm?.model || llm?.modelName || 'llm';
 
-      // Extract last user message as input preview
       let inputPreview: string | undefined;
       if (messages?.[0]) {
         const lastMsg = messages[0][messages[0].length - 1];
@@ -148,11 +207,17 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
       spans.set(runId, span);
     },
 
+    handleLLMNewToken(token: string, _idx: any, runId: string): void {
+      const span = spans.get(runId);
+      if (span) {
+        span.addToken(token);
+      }
+    },
+
     handleLLMEnd(output: any, runId: string): void {
       const span = spans.get(runId);
       if (!span) return;
 
-      // Extract tokens — try multiple shapes
       const usage = extractTokenUsage(output);
       const llmUsage = output?.llmOutput?.tokenUsage || output?.llm_output?.token_usage;
 
@@ -162,7 +227,6 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
         model: usage.model,
       });
 
-      // Extract output text
       const text = output?.generations?.[0]?.[0]?.message?.content
         || output?.generations?.[0]?.[0]?.text
         || output?.text;
@@ -182,11 +246,13 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
 
     // ── Tool ─────────────────────────────────────────────────
 
-    handleToolStart(tool: any, input: any, runId: string, parentRunId?: string): void {
+    // Match Langfuse: (tool, input, runId, parentRunId?, tags?, metadata?, name?)
+    async handleToolStart(tool: any, input: any, runId: string, parentRunId?: string, _tags?: string[], _metadata?: Record<string, unknown>, name?: string): Promise<void> {
       const trace = ensureTrace(runId, parentRunId);
-      const toolName = tool?.name || tool?.id?.[tool.id.length - 1] || 'tool';
+      const finalName = name ?? tool?.name ?? tool?.id?.at?.(-1)?.toString() ?? 'tool';
+
       const span = trace.toolCall({
-        toolName,
+        toolName: finalName,
         toolInput: typeof input === 'string' ? { input } : input,
         metadata: { framework: 'langchain', runId },
       });
@@ -213,7 +279,7 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
 
     handleRetrieverStart(serialized: any, query: any, runId: string, parentRunId?: string): void {
       const trace = ensureTrace(runId, parentRunId);
-      const name = serialized?.id?.[serialized.id.length - 1] || 'retriever';
+      const name = getName(serialized) || 'retriever';
       const span = trace.retrieverCall({
         query: typeof query === 'string' ? query : JSON.stringify(query),
         retrieverName: name,

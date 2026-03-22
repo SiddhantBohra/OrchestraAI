@@ -57,6 +57,8 @@ export class Span {
   private data: Record<string, unknown> = {};
   private metadata: Record<string, unknown>;
   private trace: Trace;
+  private streamingTokens: string[] = [];
+  private firstTokenTime: number | null = null;
 
   constructor(
     trace: Trace,
@@ -79,6 +81,17 @@ export class Span {
   setData(data: Record<string, unknown>): this {
     Object.assign(this.data, data);
     return this;
+  }
+
+  /**
+   * Accumulate a streaming token. Called by handleLLMNewToken.
+   * Tracks time-to-first-token automatically.
+   */
+  addToken(token: string): void {
+    if (this.firstTokenTime === null) {
+      this.firstTokenTime = Date.now();
+    }
+    this.streamingTokens.push(token);
   }
 
   /**
@@ -107,6 +120,17 @@ export class Span {
       if (usage.inputTokens != null) this.data.inputTokens ??= usage.inputTokens;
       if (usage.outputTokens != null) this.data.outputTokens ??= usage.outputTokens;
       if (usage.model && !this.data.model) this.data.model = usage.model;
+    }
+
+    // If we accumulated streaming tokens, use as output preview (unless already set)
+    if (this.streamingTokens.length > 0 && !this.data.outputPreview) {
+      const full = this.streamingTokens.join('');
+      this.data.outputPreview = full.length > 500 ? full.slice(0, 500) + '...' : full;
+    }
+
+    // Track time-to-first-token in metadata
+    if (this.firstTokenTime !== null) {
+      this.metadata.timeToFirstTokenMs = this.firstTokenTime - this.startTime;
     }
 
     const event: IngestEvent = {
