@@ -3,7 +3,7 @@
  */
 
 export { langGraphTracer } from './langgraph';
-export { vercelAITracer } from './vercel-ai';
+export { createVercelAITracer, type VercelAITracerOptions } from './vercel-ai';
 export { createLangChainHandler } from './langchain';
-export { createAnthropicTracer } from './anthropic';
+export { createAnthropicTracer, anthropicTracer } from './anthropic';
 export { traceADKRun } from './google-adk';
