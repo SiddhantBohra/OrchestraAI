@@ -42,6 +42,7 @@ OrchestraAI is the missing infrastructure layer: **trace what agents do, control
 | Agent action span | `trace.agent_action()` | `trace.agentAction()` |
 | LangChain/LangGraph | Callback handler | Callback handler |
 | CrewAI, LlamaIndex | Framework tracers | — |
+| Google ADK | Plugin (`BasePlugin`) | — |
 | OpenTelemetry | OTLP ingestion | OTLP ingestion |
 
 ## Architecture
@@ -241,6 +242,7 @@ Every integration has a working example for both Python and TypeScript (where ap
 | **OpenAI SDK** auto-traced completions | [`openai_agents.py`](examples/openai_agents.py) | [`openai_agents.ts`](examples/openai_agents.ts) |
 | **CrewAI** multi-agent crew | [`crewai_crew.py`](examples/crewai_crew.py) | — |
 | **LlamaIndex** RAG pipeline | [`llamaindex_rag.py`](examples/llamaindex_rag.py) | — |
+| **Google ADK** agent with plugin | [`google_adk_agent.py`](examples/google_adk_agent.py) | — |
 
 ```bash
 # Run any Python example
