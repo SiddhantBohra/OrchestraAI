@@ -16,6 +16,7 @@ from . import llamaindex_tracer
 from . import autogen_tracer
 from . import haystack_tracer
 from . import smolagents_tracer
+from . import dspy_tracer
 
 __all__ = [
     # LLM SDKs
@@ -32,4 +33,5 @@ __all__ = [
     "autogen_tracer",
     "haystack_tracer",
     "smolagents_tracer",
+    "dspy_tracer",
 ]

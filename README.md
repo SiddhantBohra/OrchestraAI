@@ -21,12 +21,13 @@ Works with every major agent framework — drop-in, zero config:
 | Framework | Python | TypeScript | Integration Style |
 |-----------|:------:|:----------:|-------------------|
 | **OpenAI SDK** | `openai_agents_tracer` | `response:` auto-extract | Auto-patch / response object |
-| **Anthropic SDK** | `anthropic_tracer` | `response:` auto-extract | Auto-patch messages.create |
+| **Anthropic SDK** | `anthropic_tracer` | `anthropic.ts` helper | Auto-patch messages.create |
 | **LiteLLM** (100+ models) | `litellm_tracer` | — | Auto-patch completion() |
 | **Instructor** (structured outputs) | `instructor_tracer` | — | Wraps OpenAI patch |
 | **LangChain** | `langchain_tracer` | `langchain.ts` handler | Callback handler |
 | **LangGraph** | `langgraph_tracer` | via LangChain handler | Auto-patch invoke/stream |
-| **Google ADK** | `google_adk_tracer` | — | Plugin (`BasePlugin`) |
+| **DSPy** (Stanford) | `dspy_tracer` | — | Native `BaseCallback` |
+| **Google ADK** | `google_adk_tracer` | `google-adk.ts` helper | Plugin / trace wrapper |
 | **CrewAI** | `crewai_tracer` | — | Auto-patch `Crew.kickoff` |
 | **LlamaIndex** | `llamaindex_tracer` | — | Instrumentation EventHandler |
 | **AutoGen** (Microsoft) | `autogen_tracer` | — | Auto-patch ConversableAgent |
