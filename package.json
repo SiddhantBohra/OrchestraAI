@@ -1,0 +1,31 @@
+{
+  "name": "orchestra-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The observability & control plane for autonomous agents",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "sdks/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "dev:api": "npm run dev --workspace=@orchestra-ai/api",
+    "dev:web": "npm run dev --workspace=@orchestra-ai/web",
+    "dev:all": "concurrently \"npm run dev:api\" \"npm run dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@10.2.0"
+}

@@ -1,0 +1,25 @@
+# Development Dockerfile with hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy root package files
+COPY package*.json ./
+COPY turbo.json ./
+
+# Copy Web package files
+COPY apps/web/package*.json ./apps/web/
+
+# Install dependencies
+RUN npm ci --workspace=apps/web
+
+# Copy source files
+COPY apps/web ./apps/web
+
+WORKDIR /app/apps/web
+
+# Expose port
+EXPOSE 3000
+
+# Start in development mode
+CMD ["npm", "run", "dev"]
