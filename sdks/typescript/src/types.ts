@@ -35,6 +35,10 @@ export interface TraceOptions {
   agentId?: string;
   /** Session/thread ID for multi-turn conversations */
   sessionId?: string;
+  /** End-user ID for per-user cost/usage attribution */
+  userId?: string;
+  /** Tags for filtering and organizing traces */
+  tags?: string[];
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -119,6 +123,8 @@ export interface IngestEvent {
   agentId?: string;
   agentName?: string;
   sessionId?: string;
+  userId?: string;
+  tags?: string[];
   model?: string;
   promptTokens?: number;
   completionTokens?: number;

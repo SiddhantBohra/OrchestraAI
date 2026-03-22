@@ -11,7 +11,10 @@ from typing import Any, Optional
 class TokenUsage:
     """Extracted token usage from an LLM response."""
 
-    __slots__ = ("input_tokens", "output_tokens", "total_tokens", "model")
+    __slots__ = (
+        "input_tokens", "output_tokens", "total_tokens", "model",
+        "cache_read_tokens", "cache_creation_tokens",
+    )
 
     def __init__(
         self,
@@ -19,6 +22,8 @@ class TokenUsage:
         output_tokens: Optional[int] = None,
         total_tokens: Optional[int] = None,
         model: Optional[str] = None,
+        cache_read_tokens: Optional[int] = None,
+        cache_creation_tokens: Optional[int] = None,
     ):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
@@ -28,6 +33,8 @@ class TokenUsage:
             else None
         )
         self.model = model
+        self.cache_read_tokens = cache_read_tokens
+        self.cache_creation_tokens = cache_creation_tokens
 
     @property
     def has_tokens(self) -> bool:
@@ -79,26 +86,44 @@ def extract_token_usage(response: Any) -> TokenUsage:
 
 
 def _parse_usage_object(usage: Any, model: Optional[str] = None) -> TokenUsage:
-    """Parse a usage object that could be OpenAI, Anthropic, or dict format."""
+    """Parse a usage object that could be OpenAI, Anthropic, Bedrock, Cohere, or dict format."""
     # OpenAI: prompt_tokens / completion_tokens
+    # Anthropic: input_tokens / output_tokens
+    # Bedrock: inputTokens / outputTokens
+    # Cohere: billed_units.input_tokens / output_tokens
     input_t = (
         _get_attr_or_key(usage, "prompt_tokens")
-        # Anthropic: input_tokens / output_tokens
         or _get_attr_or_key(usage, "input_tokens")
+        or _get_attr_or_key(usage, "inputTokens")
     )
     output_t = (
         _get_attr_or_key(usage, "completion_tokens")
         or _get_attr_or_key(usage, "output_tokens")
+        or _get_attr_or_key(usage, "outputTokens")
     )
     total_t = (
         _get_attr_or_key(usage, "total_tokens")
+        or _get_attr_or_key(usage, "totalTokens")
     )
+
+    # Anthropic cache metrics
+    cache_read = _get_attr_or_key(usage, "cache_read_input_tokens")
+    cache_creation = _get_attr_or_key(usage, "cache_creation_input_tokens")
+
+    # Cohere billed_units fallback
+    if input_t is None:
+        billed = _get_attr_or_key(usage, "billed_units")
+        if billed:
+            input_t = _get_attr_or_key(billed, "input_tokens")
+            output_t = output_t or _get_attr_or_key(billed, "output_tokens")
 
     return TokenUsage(
         input_tokens=_to_int(input_t),
         output_tokens=_to_int(output_t),
         total_tokens=_to_int(total_t),
         model=model,
+        cache_read_tokens=_to_int(cache_read),
+        cache_creation_tokens=_to_int(cache_creation),
     )
 
 

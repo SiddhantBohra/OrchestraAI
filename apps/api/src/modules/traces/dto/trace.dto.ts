@@ -116,6 +116,11 @@ export class TraceQueryDto {
   @IsString()
   agentId?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  agentName?: string;
+
   @ApiPropertyOptional({ enum: TraceType })
   @IsOptional()
   @IsEnum(TraceType)
@@ -130,6 +135,33 @@ export class TraceQueryDto {
   @IsOptional()
   @IsString()
   traceId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by session ID' })
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by end-user ID' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by LLM model name' })
+  @IsOptional()
+  @IsString()
+  model?: string;
+
+  @ApiPropertyOptional({ description: 'Minimum cost in USD (e.g., 0.01)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minCost?: number;
+
+  @ApiPropertyOptional({ description: 'Minimum duration in ms (slow traces)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minDuration?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

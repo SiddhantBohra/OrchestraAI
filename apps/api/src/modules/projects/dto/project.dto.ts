@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsBoolean, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsObject, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProjectDto {
@@ -50,6 +50,14 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Custom model pricing overrides (per 1K tokens). Keys are model names.',
+    example: { 'my-fine-tuned-model': { input: 0.006, output: 0.012 }, 'llama-3.1-70b-local': { input: 0, output: 0 } },
+  })
+  @IsOptional()
+  @IsObject()
+  customPricing?: Record<string, { input: number; output: number }>;
 }
 
 export class ProjectResponseDto {

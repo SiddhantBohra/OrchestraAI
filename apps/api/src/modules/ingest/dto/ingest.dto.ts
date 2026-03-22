@@ -150,6 +150,16 @@ export class IngestEventDto {
   @IsString()
   sessionId?: string;
 
+  @ApiPropertyOptional({ description: 'End-user ID for per-user cost/usage attribution' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @ApiPropertyOptional({ description: 'Tags for filtering and organizing traces', type: [String] })
+  @IsOptional()
+  @IsArray()
+  tags?: string[];
+
   // LLM fields
   @ApiPropertyOptional()
   @IsOptional()

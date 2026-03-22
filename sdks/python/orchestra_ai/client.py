@@ -87,6 +87,8 @@ class OrchestraAI:
         agent_name: str,
         agent_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        tags: Optional[list[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Trace:
         """
@@ -96,6 +98,8 @@ class OrchestraAI:
             agent_name: Name of the agent.
             agent_id: Unique ID for the agent. Auto-generated if not provided.
             session_id: Session/thread ID for multi-turn conversations.
+            user_id: End-user ID for per-user cost/usage attribution.
+            tags: Tags for filtering and organizing traces.
             metadata: Additional metadata to attach to the trace.
 
         Returns:
@@ -106,6 +110,8 @@ class OrchestraAI:
             agent_name=agent_name,
             agent_id=agent_id,
             session_id=session_id,
+            user_id=user_id,
+            tags=tags,
             metadata=metadata,
             enabled=self.enabled,
         )

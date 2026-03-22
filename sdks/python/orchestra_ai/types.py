@@ -1,7 +1,7 @@
 """Type definitions for OrchestraAI SDK"""
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -71,6 +71,8 @@ class IngestEvent(BaseModel):
     agent_id: Optional[str] = Field(None, alias="agentId")
     agent_name: Optional[str] = Field(None, alias="agentName")
     session_id: Optional[str] = Field(None, alias="sessionId")
+    user_id: Optional[str] = Field(None, alias="userId")
+    tags: Optional[List[str]] = None
     model: Optional[str] = None
     prompt_tokens: Optional[int] = Field(None, alias="promptTokens")
     completion_tokens: Optional[int] = Field(None, alias="completionTokens")

@@ -89,6 +89,8 @@ class Span:
             agentId=self.trace.agent_id,
             agentName=self.trace.agent_name,
             sessionId=self.trace.session_id,
+            userId=self.trace.user_id,
+            tags=self.trace.tags,
             model=self._data.get("model"),
             promptTokens=self._data.get("input_tokens"),
             completionTokens=self._data.get("output_tokens"),
@@ -140,6 +142,8 @@ class Trace:
         agent_name: str,
         agent_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        tags: Optional[list[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         enabled: bool = True,
     ):
@@ -147,6 +151,8 @@ class Trace:
         self.agent_name = agent_name
         self.agent_id = agent_id or str(uuid.uuid4())
         self.session_id = session_id or (metadata.get("session_id") if metadata else None)
+        self.user_id = user_id or (metadata.get("user_id") if metadata else None)
+        self.tags = tags
         self.trace_id = str(uuid.uuid4())
         self.root_span_id = str(uuid.uuid4())
         self.metadata = metadata or {}

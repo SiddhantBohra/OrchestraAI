@@ -121,6 +121,8 @@ export class Span {
       agentId: this.trace.agentId,
       agentName: this.trace.agentName,
       sessionId: this.trace.sessionId,
+      userId: this.trace.userId,
+      tags: this.trace.tags,
       model: this.data.model as string | undefined,
       promptTokens: this.data.inputTokens as number | undefined,
       completionTokens: this.data.outputTokens as number | undefined,
@@ -146,6 +148,8 @@ export class Trace {
   readonly agentName: string;
   readonly agentId: string;
   readonly sessionId: string | undefined;
+  readonly userId: string | undefined;
+  readonly tags: string[] | undefined;
   readonly traceId: string;
   readonly rootSpanId: string;
   readonly startTime: number;
@@ -160,6 +164,8 @@ export class Trace {
     this.agentName = agentName;
     this.agentId = options?.agentId || generateId();
     this.sessionId = options?.sessionId;
+    this.userId = options?.userId;
+    this.tags = options?.tags;
     this.traceId = generateId();
     this.rootSpanId = generateId();
     this.currentSpanId = this.rootSpanId;

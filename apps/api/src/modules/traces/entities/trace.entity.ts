@@ -14,6 +14,8 @@ export { TraceType, TraceStatus };
 @Index(['agentId', 'createdAt'])
 @Index(['traceId'])
 @Index(['parentSpanId'])
+@Index(['sessionId'])
+@Index(['userId'])
 export class Trace {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -59,6 +61,12 @@ export class Trace {
 
   @Column({ type: 'varchar', nullable: true })
   sessionId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  userId: string | null;
+
+  @Column({ type: 'simple-array', nullable: true })
+  tags: string[] | null;
 
   // LLM specific
   @Column({ type: 'varchar', nullable: true })

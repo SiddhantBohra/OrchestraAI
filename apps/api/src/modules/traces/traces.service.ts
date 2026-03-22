@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, DeepPartial } from 'typeorm';
+import { Repository, DeepPartial } from 'typeorm';
 import { Trace, TraceType, TraceStatus } from './entities/trace.entity';
 import { CreateTraceDto, TraceQueryDto, TraceTreeNode } from './dto/trace.dto';
 import { MODEL_PRICING } from '@orchestra-ai/shared';
@@ -39,27 +39,28 @@ export class TracesService {
   }
 
   async findByProject(projectId: string, query: TraceQueryDto): Promise<Trace[]> {
-    const where: any = { projectId };
+    const qb = this.tracesRepository.createQueryBuilder('trace')
+      .where('trace.projectId = :projectId', { projectId });
 
-    if (query.agentId) where.agentId = query.agentId;
-    if (query.type) where.type = query.type;
-    if (query.status) where.status = query.status;
-    if (query.traceId) where.traceId = query.traceId;
+    if (query.agentId) qb.andWhere('trace.agentId = :agentId', { agentId: query.agentId });
+    if (query.agentName) qb.andWhere('trace.agentName = :agentName', { agentName: query.agentName });
+    if (query.type) qb.andWhere('trace.type = :type', { type: query.type });
+    if (query.status) qb.andWhere('trace.status = :status', { status: query.status });
+    if (query.traceId) qb.andWhere('trace.traceId = :traceId', { traceId: query.traceId });
+    if (query.sessionId) qb.andWhere('trace.sessionId = :sessionId', { sessionId: query.sessionId });
+    if (query.userId) qb.andWhere('trace.userId = :userId', { userId: query.userId });
+    if (query.model) qb.andWhere('trace.model = :model', { model: query.model });
+    if (query.minCost != null) qb.andWhere('trace.cost >= :minCost', { minCost: query.minCost });
+    if (query.minDuration != null) qb.andWhere('trace.durationMs >= :minDuration', { minDuration: query.minDuration });
 
-    if (query.startDate && query.endDate) {
-      where.createdAt = Between(new Date(query.startDate), new Date(query.endDate));
-    } else if (query.startDate) {
-      where.createdAt = MoreThanOrEqual(new Date(query.startDate));
-    } else if (query.endDate) {
-      where.createdAt = LessThanOrEqual(new Date(query.endDate));
-    }
+    if (query.startDate) qb.andWhere('trace.createdAt >= :startDate', { startDate: new Date(query.startDate) });
+    if (query.endDate) qb.andWhere('trace.createdAt <= :endDate', { endDate: new Date(query.endDate) });
 
-    return this.tracesRepository.find({
-      where,
-      order: { createdAt: 'DESC' },
-      take: query.limit || 100,
-      skip: query.offset || 0,
-    });
+    qb.orderBy('trace.createdAt', 'DESC')
+      .take(query.limit || 100)
+      .skip(query.offset || 0);
+
+    return qb.getMany();
   }
 
   async findOne(id: string): Promise<Trace | null> {
