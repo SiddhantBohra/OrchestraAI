@@ -25,11 +25,12 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
   const { currentProject, projects, setProjects, setCurrentProject } = useProjectStore();
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
 
   useEffect(() => {
+    if (!_hasHydrated) return; // Wait for zustand to rehydrate from localStorage
     if (!isAuthenticated) {
       router.push('/login');
       return;
@@ -42,9 +43,10 @@ export default function DashboardLayout({
         setCurrentProject(res.data[0]);
       }
     });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, _hasHydrated]);
 
-  if (!isAuthenticated) {
+  // Show nothing while hydrating (prevents flash of login redirect)
+  if (!_hasHydrated || !isAuthenticated) {
     return null;
   }
 

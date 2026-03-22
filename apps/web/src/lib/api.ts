@@ -20,13 +20,14 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle auth errors
+// Handle auth errors — redirect to login on 401 (expired token)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
         localStorage.removeItem('token');
+        localStorage.removeItem('auth-storage');
         window.location.href = '/login';
       }
     }
