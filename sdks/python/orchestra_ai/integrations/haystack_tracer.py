@@ -218,6 +218,9 @@ def auto_instrument(client: "OrchestraAI") -> None:
         component_names = list(self.graph.nodes) if hasattr(self, "graph") else []
         pipeline_name = getattr(self, "metadata", {}).get("name", "haystack-pipeline")
 
+        # Extract input preview from pipeline data
+        input_preview = str(data)[:500] if data else None
+
         with _client.trace(
             agent_name=pipeline_name,
             metadata={
@@ -226,6 +229,8 @@ def auto_instrument(client: "OrchestraAI") -> None:
                 "component_count": len(component_names),
             },
         ) as trace:
+            if input_preview:
+                trace.set_input(input_preview)
             _active.trace = trace
             try:
                 result = _originals["Pipeline.run"](self, data, **kwargs)

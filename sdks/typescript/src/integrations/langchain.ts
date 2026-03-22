@@ -109,6 +109,25 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
     return !showNoise && NOISE_RUNNABLES.has(name);
   }
 
+  /** Extract user-facing input from LangChain/LangGraph inputs */
+  function extractUserInput(inputs: unknown): string | undefined {
+    if (inputs == null) return undefined;
+    if (typeof inputs === 'string') return inputs.slice(0, 500);
+    if (typeof inputs !== 'object') return String(inputs).slice(0, 500);
+    const obj = inputs as Record<string, unknown>;
+    // LangGraph state typically has a "question", "input", "query", or "messages" key
+    for (const key of ['question', 'input', 'query', 'prompt', 'user_input']) {
+      if (typeof obj[key] === 'string' && obj[key]) return (obj[key] as string).slice(0, 500);
+    }
+    // Check for messages array (chat models)
+    if (Array.isArray(obj.messages) && obj.messages.length > 0) {
+      const last = obj.messages[obj.messages.length - 1];
+      const content = last?.content ?? last?.kwargs?.content;
+      if (typeof content === 'string') return content.slice(0, 500);
+    }
+    return undefined;
+  }
+
   return {
     name: 'orchestra-langchain-handler',
 
@@ -129,6 +148,12 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
 
       const displayName = nodeName || serializedName;
       const trace = ensureTrace(runId, parentRunId, displayName);
+
+      // Capture root invocation input on the trace for sidebar display
+      if (isRootRun(runId) || !runToParent.has(runId)) {
+        const inputStr = extractUserInput(inputs);
+        if (inputStr) trace.setInput(inputStr);
+      }
 
       const span = trace.step(displayName, {
         metadata: { framework: 'langchain', runId },

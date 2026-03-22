@@ -113,7 +113,14 @@ class OrchestraLangChainHandler:
             return
 
         display_name = kwargs_name or serialized_name
+        is_new_trace = self._root_trace is None
         trace = self._ensure_trace(run_id, parent_run_id, display_name)
+
+        # Set trace-level input from the first (root) chain's inputs
+        if is_new_trace and inputs:
+            input_text = _extract_user_input(inputs)
+            if input_text:
+                trace.set_input(input_text)
 
         span = trace.step(display_name, metadata={"framework": "langchain", "run_id": run_id})
         span.set_data(input_preview=_preview(inputs, 500))
@@ -422,6 +429,28 @@ def _deep_get(obj: Any, *keys: str) -> Optional[str]:
         if current is None:
             return None
     return current if isinstance(current, str) else None
+
+
+def _extract_user_input(inputs: Any) -> Optional[str]:
+    """Extract a user-facing input string from LangChain chain inputs."""
+    if isinstance(inputs, str):
+        return inputs[:500]
+    if isinstance(inputs, dict):
+        # Common keys for user input in LangChain/LangGraph
+        for key in ("input", "question", "query", "messages", "human_input", "text"):
+            val = inputs.get(key)
+            if val is not None:
+                if isinstance(val, list) and val:
+                    # messages list — get last user message
+                    last = val[-1]
+                    content = getattr(last, "content", None)
+                    if content is None and isinstance(last, dict):
+                        content = last.get("content")
+                    return str(content)[:500] if content else str(last)[:500]
+                return str(val)[:500]
+        # Fallback: stringify the whole dict
+        return str(inputs)[:500]
+    return str(inputs)[:500] if inputs else None
 
 
 def _extract_generation_text(output: Any) -> Optional[str]:

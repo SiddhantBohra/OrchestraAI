@@ -193,6 +193,14 @@ def auto_instrument(client: "OrchestraAI") -> None:
             for t in self.tasks:
                 task_descriptions.append(str(getattr(t, "description", ""))[:100])
 
+        # Build input preview from inputs dict and task descriptions
+        input_parts = []
+        if inputs:
+            input_parts.append(str(inputs)[:300])
+        if task_descriptions:
+            input_parts.append("Tasks: " + "; ".join(task_descriptions[:5]))
+        input_preview = " | ".join(input_parts)[:500] if input_parts else None
+
         with _client.trace(
             agent_name=crew_name,
             metadata={
@@ -202,6 +210,8 @@ def auto_instrument(client: "OrchestraAI") -> None:
                 "tasks": task_descriptions[:20],
             },
         ) as trace:
+            if input_preview:
+                trace.set_input(input_preview)
             _active.trace = trace
             try:
                 result = _originals["Crew.kickoff"](self, inputs)
@@ -228,6 +238,18 @@ def auto_instrument(client: "OrchestraAI") -> None:
                     if hasattr(agent, "role"):
                         agent_names.append(agent.role)
 
+            # Build input preview for async kickoff
+            async_task_descriptions = []
+            if hasattr(self, "tasks"):
+                for t in self.tasks:
+                    async_task_descriptions.append(str(getattr(t, "description", ""))[:100])
+            async_input_parts = []
+            if inputs:
+                async_input_parts.append(str(inputs)[:300])
+            if async_task_descriptions:
+                async_input_parts.append("Tasks: " + "; ".join(async_task_descriptions[:5]))
+            async_input_preview = " | ".join(async_input_parts)[:500] if async_input_parts else None
+
             with _client.trace(
                 agent_name=crew_name,
                 metadata={
@@ -236,6 +258,8 @@ def auto_instrument(client: "OrchestraAI") -> None:
                     "task_count": len(getattr(self, "tasks", [])),
                 },
             ) as trace:
+                if async_input_preview:
+                    trace.set_input(async_input_preview)
                 _active.trace = trace
                 try:
                     result = await _originals["Crew.kickoff_async"](self, inputs)

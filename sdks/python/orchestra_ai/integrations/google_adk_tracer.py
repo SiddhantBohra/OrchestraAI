@@ -54,6 +54,7 @@ class OrchestraADKPlugin:
         self._traces: Dict[str, "Trace"] = {}  # keyed by invocation_id
         self._spans: Dict[str, "Span"] = {}  # keyed by span_key
         self._llm_start_times: Dict[str, float] = {}
+        self._trace_has_input: Dict[str, bool] = {}  # track if trace input was set
 
     @property
     def name(self) -> str:
@@ -79,6 +80,7 @@ class OrchestraADKPlugin:
         )
         trace.__enter__()
         self._traces[invocation_id] = trace
+        self._trace_has_input[invocation_id] = False
         return None
 
     async def after_agent_callback(
@@ -118,6 +120,11 @@ class OrchestraADKPlugin:
                 text_parts = [getattr(p, "text", "") for p in parts if hasattr(p, "text")]
                 if text_parts:
                     input_preview = " ".join(text_parts)[:500]
+
+        # Set the trace-level input from the first LLM request
+        if not self._trace_has_input.get(invocation_id, False) and input_preview:
+            trace.set_input(input_preview)
+            self._trace_has_input[invocation_id] = True
 
         span_key = f"llm_{invocation_id}_{id(llm_request)}"
         span = trace.llm_call(

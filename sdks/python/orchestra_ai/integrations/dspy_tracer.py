@@ -45,6 +45,11 @@ class OrchestraDSPyCallback:
     ) -> None:
         """Start a trace when a DSPy module is invoked."""
         module_name = type(instance).__name__
+        # Build input preview from module inputs
+        input_preview = ", ".join(
+            f"{k}={str(v)[:100]}" for k, v in inputs.items()
+        )[:500] if inputs else None
+
         trace = self._client.trace(
             agent_name=f"dspy:{module_name}",
             metadata={
@@ -54,6 +59,8 @@ class OrchestraDSPyCallback:
             },
         )
         trace.__enter__()
+        if input_preview:
+            trace.set_input(input_preview)
         self._traces[call_id] = trace
 
     def on_module_end(

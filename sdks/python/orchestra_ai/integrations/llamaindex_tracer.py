@@ -244,10 +244,15 @@ def _patch_workflow(client: "OrchestraAI", agent_name: str) -> None:
         global _active_trace
         workflow_name = type(self).__name__
 
+        # Build input preview from workflow kwargs
+        input_preview = str(kwargs)[:500] if kwargs else None
+
         with client.trace(
             agent_name=workflow_name,
             metadata={"framework": "llamaindex", "type": "workflow", "workflow_class": workflow_name},
         ) as trace:
+            if input_preview:
+                trace.set_input(input_preview)
             _active_trace = trace
 
             # Create a step span for the overall workflow

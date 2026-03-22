@@ -106,15 +106,19 @@ def auto_instrument(client: "OrchestraAI") -> None:
         recipient_name = getattr(recipient, "name", "agent")
         conversation_name = f"{sender_name}\u2192{recipient_name}"
 
+        message_text = str(kwargs.get("message", ""))[:500]
+
         with _client.trace(
             agent_name=conversation_name,
             metadata={
                 "framework": "autogen",
                 "sender": sender_name,
                 "recipient": recipient_name,
-                "message": str(kwargs.get("message", ""))[:200],
+                "message": message_text[:200],
             },
         ) as trace:
+            if message_text:
+                trace.set_input(message_text)
             _active.trace = trace
             _active.message_count = 0
             try:

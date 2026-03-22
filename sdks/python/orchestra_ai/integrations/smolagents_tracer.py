@@ -195,6 +195,7 @@ def auto_instrument(client: "OrchestraAI") -> None:
                 "max_steps": max_steps,
             },
         ) as trace:
+            trace.set_input(task[:500])
             _active.trace = trace
             _active.step_count = 0
             try:

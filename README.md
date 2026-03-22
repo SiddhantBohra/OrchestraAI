@@ -20,32 +20,49 @@ OrchestraAI is the missing infrastructure layer: **trace what agents do, control
 
 Works with every major agent framework — drop-in, zero config:
 
-| Framework | Python | TypeScript | Integration Style |
-|-----------|:------:|:----------:|-------------------|
-| **OpenAI SDK** | `openai_agents_tracer` | `response:` auto-extract | Auto-patch / response object |
-| **Anthropic SDK** | `anthropic_tracer` | `anthropic.ts` helper | Auto-patch messages.create |
-| **LiteLLM** (100+ models) | `litellm_tracer` | — | Auto-patch completion() |
-| **Instructor** (structured outputs) | `instructor_tracer` | — | Wraps OpenAI patch |
-| **LangChain** | `langchain_tracer` | `langchain.ts` handler | Callback handler |
-| **LangGraph** | `langgraph_tracer` | via LangChain handler | Auto-patch invoke/stream |
-| **DSPy** (Stanford) | `dspy_tracer` | — | Native `BaseCallback` |
-| **Google ADK** | `google_adk_tracer` | `google-adk.ts` helper | Plugin / trace wrapper |
-| **CrewAI** | `crewai_tracer` | — | Auto-patch `Crew.kickoff` |
-| **LlamaIndex** | `llamaindex_tracer` | — | Instrumentation EventHandler |
-| **AutoGen** (Microsoft) | `autogen_tracer` | — | Auto-patch ConversableAgent |
-| **Haystack** (deepset) | `haystack_tracer` | — | Auto-patch Pipeline.run |
-| **smolagents** (HuggingFace) | `smolagents_tracer` | — | Auto-patch Agent.run |
-| **Vercel AI SDK** | — | `vercel-ai.ts` | Telemetry hook |
-| **OpenTelemetry** | OTLP endpoint | OTLP endpoint | Native OTLP ingestion |
+| | Framework | Python | TypeScript | What's Traced |
+|---|-----------|:------:|:----------:|---------------|
+| <img src="https://avatars.githubusercontent.com/u/14957082" height="20"> | **OpenAI SDK** | ✅ `openai_agents_tracer` | ✅ auto-extract | LLM calls, streaming, tokens, tool calls |
+| <img src="https://cdn.simpleicons.org/anthropic/D4A27F" height="20"> | **Anthropic Claude** | ✅ `anthropic_tracer` | ✅ `anthropicTracer` | Messages, streaming, tool use, TTFT |
+| <img src="https://framerusercontent.com/images/GtfMdzyrMj6FQY6lGLqI6bh2LYM.png" height="20"> | **LiteLLM** (100+ models) | ✅ `litellm_tracer` | — | All providers, streaming, tokens |
+| <img src="https://python.useinstructor.com/assets/images/favicon.png" height="20"> | **Instructor** (structured) | ✅ `instructor_tracer` | — | Structured outputs via OpenAI patch |
+| <img src="https://cdn.simpleicons.org/langchain/65C89B" height="20"> | **LangChain** | ✅ `langchain_tracer` | ✅ `langchain.ts` | Chains, LLMs, tools, retrievers, streaming |
+| <img src="https://cdn.simpleicons.org/langchain/65C89B" height="20"> | **LangGraph** | ✅ `langgraph_tracer` | ✅ via LangChain | Graph nodes, state, HITL, streaming |
+| <img src="https://raw.githubusercontent.com/stanfordnlp/dspy/main/docs/docs/static/img/dspy_logo.png" height="20"> | **DSPy** (Stanford) | ✅ `dspy_tracer` | — | Modules, LM calls, tools, cost |
+| <img src="https://google.github.io/adk-docs/assets/agent-development-kit.png" height="20"> | **Google ADK** | ✅ `google_adk_tracer` | ✅ `google-adk.ts` | Agent lifecycle, LLM, tools, Gemini tokens |
+| <img src="https://cdn.simpleicons.org/crewai/FF5A50" height="20"> | **CrewAI** | ✅ `crewai_tracer` | — | Crews, tasks, agents, tools, LLM calls |
+| <img src="https://avatars.githubusercontent.com/u/130722866" height="20"> | **LlamaIndex** | ✅ `llamaindex_tracer` | — | LLM, retrievers, embeddings, workflows |
+| <img src="https://microsoft.github.io/autogen/0.2/img/ag.svg" height="20"> | **AutoGen** (Microsoft) | ✅ `autogen_tracer` | — | Conversations, per-message LLM, tools |
+| <img src="https://cdn.simpleicons.org/haystack/0EAF9C" height="20"> | **Haystack** (deepset) | ✅ `haystack_tracer` | — | Pipelines, generators, retrievers, components |
+| <img src="https://cdn.simpleicons.org/huggingface/FFD21E" height="20"> | **smolagents** (HuggingFace) | ✅ `smolagents_tracer` | — | Steps, reasoning, tool calls, max_steps |
+| <img src="https://cdn.simpleicons.org/vercel/white" height="20"> | **Vercel AI SDK** | — | ✅ `vercel-ai.ts` | generateText, streamText, objects, tools, TTFT |
+| <img src="https://cdn.simpleicons.org/opentelemetry/F5A800" height="20"> | **OpenTelemetry** | ✅ OTLP endpoint | ✅ OTLP endpoint | Native OTLP span ingestion |
+
+### Integration Depth
+
+Unlike competitors that rely on generic OpenTelemetry instrumentors, OrchestraAI uses **native framework integrations** for deeper tracing:
+
+```
+CrewAI trace tree:
+  agent_run: research-crew
+  ├── step: task:Research Topic (agent: Researcher)
+  │   ├── tool: web_search ("AI agents 2024")
+  │   └── llm: gpt-4o (62→384 tokens, $0.012)
+  ├── step: task:Write Article (agent: Writer)
+  │   └── llm: gpt-4o (1.2k→800 tokens, $0.028)
+  └── final-output (2 tasks, 2 agents)
+```
 
 ## Features
 
 ### Observability
-- **Trace Explorer** — hierarchical trace trees: agent runs → LLM calls → tool calls → retrievers
+- **Trace Explorer** — hierarchical trace trees with resizable panels: agent runs → LLM calls → tool calls → retrievers
 - **Cost Tracking** — per-model, per-agent cost breakdown with custom pricing support
-- **Auto Token Extraction** — tokens and model name auto-detected from OpenAI, Anthropic, Gemini responses
+- **Auto Token Extraction** — tokens and model name auto-detected from OpenAI, Anthropic, Gemini, Cohere, Bedrock responses
+- **Streaming Support** — streaming token capture with time-to-first-token (TTFT) tracking
 - **Session Tracking** — group multi-turn conversations by session ID
-- **Real-time SSE** — live trace streaming to the dashboard
+- **Real-time SSE** — live trace streaming to the dashboard with Live/Paused toggle
+- **Smart Input Capture** — auto-extracts user-facing input from framework-specific state (question, prompt, messages)
 
 ### Control Plane
 - **Policy Engine** — budget limits, rate limiting, tool permissions, runaway detection
@@ -60,6 +77,8 @@ Works with every major agent framework — drop-in, zero config:
 | Auto token extraction | `response=response` | `response: response` |
 | Kill switch | `AgentKilledException` | `AgentKilledException` |
 | Session tracking | `session_id="..."` | `sessionId: "..."` |
+| Streaming + TTFT | `add_token()` + `_first_token_time` | `addToken()` + `firstTokenTime` |
+| Trace input capture | `trace.set_input("...")` | `trace.setInput("...")` |
 | LLM / Tool / Retriever / Agent Action spans | All supported | All supported |
 
 ## Architecture
@@ -285,11 +304,11 @@ OrchestraAI/
 │   ├── python/             # Python SDK — pip install -e sdks/python
 │   │   └── orchestra_ai/
 │   │       ├── client.py, tracer.py, token_extraction.py
-│   │       └── integrations/  # langchain, langgraph, crewai, llamaindex, google_adk, openai
+│   │       └── integrations/  # 13 frameworks: langchain, crewai, llamaindex, openai, anthropic, ...
 │   └── typescript/         # TypeScript SDK — npm link ./sdks/typescript
 │       └── src/
 │           ├── client.ts, tracer.ts, token-extraction.ts
-│           └── integrations/  # langchain, langgraph, vercel-ai
+│           └── integrations/  # 5 frameworks: langchain, langgraph, vercel-ai, anthropic, google-adk
 ├── examples/               # 13 working examples (Python + TypeScript)
 ├── tests/                  # E2E integration tests
 ├── docker-compose.yml      # Postgres + Redis (ClickHouse optional)
@@ -318,17 +337,20 @@ Full Swagger docs at `/api/docs` when the API is running.
 ## Roadmap
 
 ### Done
-- [x] Trace explorer with hierarchical span trees
+- [x] Trace explorer with hierarchical span trees and resizable panels
 - [x] Cost tracking with custom pricing
-- [x] Auto token extraction (OpenAI, Anthropic, Gemini)
+- [x] Auto token extraction (OpenAI, Anthropic, Gemini, Cohere, Bedrock)
+- [x] Streaming support with time-to-first-token tracking
 - [x] Policy engine (budget, rate limit, runaway, tool permissions)
 - [x] Kill switch with `AgentKilledException`
 - [x] Human-in-the-loop spans
-- [x] 16 framework integrations
-- [x] SSE real-time events
+- [x] 16 framework integrations with deep tracing
+- [x] SSE real-time events with Live/Paused toggle
+- [x] Smart input capture across all frameworks
 - [x] Prompt versioning
 - [x] Bcrypt-hashed API keys
 - [x] TypeORM migrations
+- [x] Noise filtering (internal LangChain runnables hidden)
 
 ### In Progress
 - [ ] Dashboard UI improvements (trace detail panel, filtering)
@@ -341,7 +363,6 @@ Full Swagger docs at `/api/docs` when the API is running.
 - [ ] Annotation queues (human review workflows)
 - [ ] Custom dashboards
 - [ ] ClickHouse for high-volume trace storage
-- [ ] WebSocket live dashboard updates
 - [ ] Publish SDKs to PyPI / npm
 
 ## Contributing

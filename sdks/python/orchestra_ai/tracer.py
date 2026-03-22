@@ -169,6 +169,19 @@ class Trace:
         self.end_time: Optional[int] = None
         self._pending_events: list[IngestEvent] = []
         self._current_span_id = self.root_span_id
+        self._input: Optional[str] = None
+
+    def set_input(self, value: str) -> Trace:
+        """Set the user-facing input for this trace (shown in sidebar).
+
+        Args:
+            value: The input text (truncated to 500 chars).
+
+        Returns:
+            self for chaining.
+        """
+        self._input = str(value)[:500] if value else None
+        return self
     
     def step(
         self,
@@ -458,6 +471,7 @@ class Trace:
             status="started",
             agentId=self.agent_id,
             agentName=self.agent_name,
+            input=self._input,
             metadata=self.metadata,
         )
         self._pending_events.append(event)
@@ -482,6 +496,7 @@ class Trace:
             status=final_status,
             agentId=self.agent_id,
             agentName=self.agent_name,
+            input=self._input,
             metadata=self.metadata,
         )
         self._pending_events.append(event)

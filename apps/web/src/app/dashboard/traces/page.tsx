@@ -246,7 +246,7 @@ export default function TracesPage() {
                       : 'hover:bg-gray-50 dark:hover:bg-slate-700/30'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-0.5">
                     <span className="font-semibold text-[13px] text-gray-900 dark:text-gray-100 truncate">
                       {run.agentName || run.name}
                     </span>
@@ -254,18 +254,34 @@ export default function TracesPage() {
                       {run.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                  {/* Input preview subtitle — helps distinguish traces */}
+                  {run.input && (
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 truncate mb-1 leading-tight">
+                      {run.input.length > 60 ? run.input.slice(0, 60) + '...' : run.input}
+                    </p>
+                  )}
+                  {!run.input && run.metadata?.task && (
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 truncate mb-1 leading-tight">
+                      {String(run.metadata.task).length > 60 ? String(run.metadata.task).slice(0, 60) + '...' : String(run.metadata.task)}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                    {run.metadata?.framework && (
+                      <span className="text-[9px] px-1.5 py-px rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400 font-medium">
+                        {run.metadata.framework}
+                      </span>
+                    )}
                     {run.durationMs != null && (
-                      <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{formatDuration(run.durationMs)}</span>
+                      <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{formatDuration(run.durationMs)}</span>
                     )}
                     {run.totalTokens != null && run.totalTokens > 0 && (
-                      <span className="flex items-center gap-0.5"><Zap className="h-3 w-3" />{formatNumber(run.totalTokens)}</span>
+                      <span className="flex items-center gap-0.5"><Zap className="h-2.5 w-2.5" />{formatNumber(run.totalTokens)}</span>
                     )}
                     {run.cost != null && Number(run.cost) > 0 && (
-                      <span className="flex items-center gap-0.5"><DollarSign className="h-3 w-3" />{formatCurrency(Number(run.cost))}</span>
+                      <span className="flex items-center gap-0.5"><DollarSign className="h-2.5 w-2.5" />{formatCurrency(Number(run.cost))}</span>
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{formatDate(run.createdAt)}</p>
+                  <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">{formatDate(run.createdAt)}</p>
                 </button>
               ))
             ) : (

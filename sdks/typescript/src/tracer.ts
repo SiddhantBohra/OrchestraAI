@@ -182,6 +182,8 @@ export class Trace {
   private metadata: Record<string, unknown>;
   private pendingEvents: IngestEvent[] = [];
   private currentSpanId: string;
+  private traceInput: string | undefined;
+  private traceOutput: string | undefined;
 
   constructor(client: OrchestraAI, agentName: string, options?: TraceOptions) {
     this.client = client;
@@ -209,6 +211,16 @@ export class Trace {
       sessionId: this.sessionId,
       metadata: this.metadata,
     });
+  }
+
+  /** Set the trace-level input (shown in sidebar). */
+  setInput(input: string): void {
+    this.traceInput = input.length > 500 ? input.slice(0, 500) + '...' : input;
+  }
+
+  /** Set the trace-level output. */
+  setOutput(output: string): void {
+    this.traceOutput = output.length > 500 ? output.slice(0, 500) + '...' : output;
   }
 
   // ── Span Creators ──────────────────────────────────────────
@@ -400,6 +412,8 @@ export class Trace {
       agentId: this.agentId,
       agentName: this.agentName,
       sessionId: this.sessionId,
+      input: this.traceInput,
+      output: this.traceOutput,
       metadata: this.metadata,
     });
 
