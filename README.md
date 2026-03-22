@@ -230,12 +230,28 @@ See full working demos: [`examples/kill_switch_demo.py`](examples/kill_switch_de
 
 ## Examples
 
+Every integration has a working example for both Python and TypeScript (where applicable):
+
 | Example | Python | TypeScript |
 |---------|--------|------------|
-| Basic tracing (LLM + tools + retriever) | [`examples/basic_tracing.py`](examples/basic_tracing.py) | [`examples/basic_tracing.ts`](examples/basic_tracing.ts) |
-| Kill switch demo | [`examples/kill_switch_demo.py`](examples/kill_switch_demo.py) | [`examples/kill_switch_demo.ts`](examples/kill_switch_demo.ts) |
-| LangChain integration test | [`tests/langchain_test.py`](tests/langchain_test.py) | — |
-| LMStudio local model test | [`tests/lmstudio_test.py`](tests/lmstudio_test.py) | — |
+| **Basic tracing** (LLM + tools + retriever) | [`basic_tracing.py`](examples/basic_tracing.py) | [`basic_tracing.ts`](examples/basic_tracing.ts) |
+| **Kill switch** (budget-based agent halt) | [`kill_switch_demo.py`](examples/kill_switch_demo.py) | [`kill_switch_demo.ts`](examples/kill_switch_demo.ts) |
+| **LangChain** ReAct agent with tools | [`langchain_agent.py`](examples/langchain_agent.py) | [`langchain_agent.ts`](examples/langchain_agent.ts) |
+| **LangGraph** auto-instrumented graph | [`langgraph_agent.py`](examples/langgraph_agent.py) | [`langgraph_agent.ts`](examples/langgraph_agent.ts) |
+| **OpenAI SDK** auto-traced completions | [`openai_agents.py`](examples/openai_agents.py) | [`openai_agents.ts`](examples/openai_agents.ts) |
+| **CrewAI** multi-agent crew | [`crewai_crew.py`](examples/crewai_crew.py) | — |
+| **LlamaIndex** RAG pipeline | [`llamaindex_rag.py`](examples/llamaindex_rag.py) | — |
+
+```bash
+# Run any Python example
+pip install -e sdks/python
+export ORCHESTRA_API_KEY=oai_...
+python examples/langchain_agent.py
+
+# Run any TypeScript example
+export ORCHESTRA_API_KEY=oai_...
+npx tsx examples/openai_agents.ts
+```
 
 ## Project Structure
 
