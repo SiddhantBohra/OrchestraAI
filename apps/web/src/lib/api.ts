@@ -71,9 +71,31 @@ export const agentsApi = {
 };
 
 // Traces API
+export interface TraceQueryParams {
+  agentId?: string;
+  agentName?: string;
+  type?: string;
+  status?: string;
+  model?: string;
+  minCost?: number;
+  minDuration?: number;
+  sessionId?: string;
+  userId?: string;
+  tags?: string;
+  startDate?: string;
+  endDate?: string;
+  traceId?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export const tracesApi = {
-  list: (projectId: string, params?: { agentId?: string; type?: string; status?: string; limit?: number; offset?: number }) =>
+  list: (projectId: string, params?: TraceQueryParams) =>
     api.get(`/projects/${projectId}/traces`, { params }),
+  count: (projectId: string, params?: TraceQueryParams) =>
+    api.get(`/projects/${projectId}/traces/count`, { params }),
   get: (projectId: string, id: string) => api.get(`/projects/${projectId}/traces/${id}`),
   getTree: (projectId: string, traceId: string) =>
     api.get(`/projects/${projectId}/traces/tree/${traceId}`),
@@ -83,6 +105,22 @@ export const tracesApi = {
     api.get(`/projects/${projectId}/traces/errors`, { params: { limit } }),
   detectRunaway: (projectId: string, windowMinutes?: number, threshold?: number) =>
     api.get(`/projects/${projectId}/traces/runaway`, { params: { windowMinutes, threshold } }),
+};
+
+// Sessions API
+export const sessionsApi = {
+  list: (projectId: string, params?: { limit?: number; offset?: number; userId?: string }) =>
+    api.get(`/projects/${projectId}/traces/sessions`, { params }),
+  get: (projectId: string, sessionId: string) =>
+    api.get(`/projects/${projectId}/traces/sessions/${sessionId}`),
+};
+
+// Users API
+export const usersApi = {
+  list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+    api.get(`/projects/${projectId}/traces/users`, { params }),
+  get: (projectId: string, userId: string) =>
+    api.get(`/projects/${projectId}/traces/users/${userId}`),
 };
 
 // Policies API
@@ -97,10 +135,10 @@ export const policiesApi = {
   createDefaults: (projectId: string) => api.post(`/projects/${projectId}/policies/defaults`),
 };
 
-// Events SSE — returns the full EventSource URL with auth
+// Events SSE — connect directly to the API server (not through Next.js proxy, which buffers SSE)
 export function getTraceStreamUrl(projectId: string): string {
-  const base = API_URL.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${API_URL}` : API_URL;
-  return `${base}/projects/${projectId}/events/stream`;
+  const directApi = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+  return `${directApi}/projects/${projectId}/events/stream`;
 }
 
 // Dashboard API

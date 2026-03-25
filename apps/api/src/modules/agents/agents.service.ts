@@ -46,6 +46,25 @@ export class AgentsService {
     });
   }
 
+  /**
+   * Find or create an agent — handles concurrent race conditions.
+   */
+  async findOrCreate(projectId: string, dto: CreateAgentDto): Promise<Agent> {
+    const existing = await this.findByNameAndProject(dto.name, projectId);
+    if (existing) return existing;
+
+    try {
+      return await this.create(projectId, dto);
+    } catch (error: any) {
+      // Race condition: another concurrent request created it first
+      if (error?.code === '23505' || error?.message?.includes('duplicate')) {
+        const agent = await this.findByNameAndProject(dto.name, projectId);
+        if (agent) return agent;
+      }
+      throw error;
+    }
+  }
+
   async update(id: string, dto: UpdateAgentDto): Promise<Agent> {
     const agent = await this.findOne(id);
     Object.assign(agent, dto);

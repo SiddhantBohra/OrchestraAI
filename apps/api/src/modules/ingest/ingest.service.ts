@@ -6,7 +6,7 @@ import { PoliciesService } from '../policies/policies.service';
 import { EventsService } from '../events/events.service';
 import { IngestEventDto, IngestBatchDto, IngestTracesDto } from './dto/ingest.dto';
 import { TraceType, TraceStatus } from '../traces/entities/trace.entity';
-import { AgentStatus } from '../agents/entities/agent.entity';
+import { AgentStatus, AgentFramework } from '../agents/entities/agent.entity';
 
 @Injectable()
 export class IngestService {
@@ -40,6 +40,34 @@ export class IngestService {
 
   async ingestEvent(apiKey: string, event: IngestEventDto) {
     const project = await this.validateApiKey(apiKey);
+
+    // Auto-register agent if it doesn't exist, reject if killed
+    if (event.agentName) {
+      const frameworkStr = (event.metadata?.framework as string) || '';
+      const frameworkMap: Record<string, AgentFramework> = {
+        langchain: AgentFramework.LANGGRAPH,
+        langgraph: AgentFramework.LANGGRAPH,
+        openai: AgentFramework.OPENAI_AGENTS,
+        crewai: AgentFramework.CREWAI,
+        llamaindex: AgentFramework.LLAMAINDEX,
+        haystack: AgentFramework.HAYSTACK,
+        autogen: AgentFramework.AUTOGEN,
+      };
+      const framework = frameworkMap[frameworkStr] || AgentFramework.CUSTOM;
+
+      const agent = await this.agentsService.findOrCreate(project.id, {
+        name: event.agentName,
+        description: `Auto-registered from ${frameworkStr || 'SDK'} trace`,
+        framework,
+      });
+
+      if (agent.status === AgentStatus.KILLED) {
+        throw new ForbiddenException({
+          message: `Agent "${event.agentName}" has been killed.`,
+          action: 'kill',
+        });
+      }
+    }
 
     // Evaluate policies (shared logic)
     const policyResult = await this.evaluatePolicies(project, {
@@ -290,6 +318,10 @@ export class IngestService {
       retriever: TraceType.RETRIEVER,
       agent_action: TraceType.AGENT_ACTION,
       human_input: TraceType.HUMAN_INPUT,
+      embedding: TraceType.EMBEDDING,
+      evaluator: TraceType.EVALUATOR,
+      guardrail: TraceType.GUARDRAIL,
+      chain: TraceType.CHAIN,
       error: TraceType.ERROR,
     };
     return map[type] || TraceType.STEP;

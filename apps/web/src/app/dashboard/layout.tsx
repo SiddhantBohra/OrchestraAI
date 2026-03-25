@@ -16,6 +16,8 @@ import {
   LogOut,
   ChevronDown,
   Plus,
+  MessageSquare,
+  Users,
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -54,6 +56,8 @@ export default function DashboardLayout({
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Agents', href: '/dashboard/agents', icon: Bot },
     { name: 'Traces', href: '/dashboard/traces', icon: FileSearch },
+    { name: 'Sessions', href: '/dashboard/sessions', icon: MessageSquare },
+    { name: 'Users', href: '/dashboard/users', icon: Users },
     { name: 'Policies', href: '/dashboard/policies', icon: Shield },
     { name: 'Cost', href: '/dashboard/cost', icon: DollarSign },
     { name: 'Settings', href: '/dashboard/settings', icon: Settings },

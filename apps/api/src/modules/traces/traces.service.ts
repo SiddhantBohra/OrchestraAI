@@ -25,6 +25,38 @@ export class TracesService {
       ?? this.calculateCost(dto.model, dto.promptTokens, dto.completionTokens, customPricing)
       ?? null;
 
+    // Upsert: if a span with the same traceId + spanId already exists, update it
+    // This handles the started → completed pattern without creating duplicate rows
+    const existing = await this.tracesRepository.findOne({
+      where: { traceId: dto.traceId, spanId: dto.spanId, projectId },
+    });
+
+    if (existing) {
+      // Merge: keep existing data, overwrite with new non-null values
+      if (dto.endTime) existing.endTime = dto.endTime as any;
+      if (durationMs != null) existing.durationMs = durationMs;
+      if (dto.status) existing.status = this.mapStatusString(dto.status);
+      if (dto.model) existing.model = dto.model;
+      if (dto.promptTokens) existing.promptTokens = dto.promptTokens;
+      if (dto.completionTokens) existing.completionTokens = dto.completionTokens;
+      if (totalTokens) existing.totalTokens = totalTokens;
+      if (cost != null) existing.cost = cost as any;
+      if (dto.input) existing.input = dto.input;
+      if (dto.output) existing.output = dto.output;
+      if (dto.toolName) existing.toolName = dto.toolName;
+      if (dto.toolArgs) existing.toolArgs = dto.toolArgs;
+      if (dto.toolResult) existing.toolResult = dto.toolResult;
+      if (dto.errorType) existing.errorType = dto.errorType;
+      if (dto.errorMessage) existing.errorMessage = dto.errorMessage;
+      if (dto.metadata) existing.metadata = { ...existing.metadata, ...dto.metadata };
+      if ((dto as any).sessionId) existing.sessionId = (dto as any).sessionId;
+      if ((dto as any).userId) existing.userId = (dto as any).userId;
+      if ((dto as any).tags) existing.tags = (dto as any).tags;
+
+      return this.tracesRepository.save(existing);
+    }
+
+    // New span — insert
     const tracePayload: DeepPartial<Trace> = {
       ...(dto as DeepPartial<Trace>),
       projectId,
@@ -34,8 +66,15 @@ export class TracesService {
     };
 
     const trace = this.tracesRepository.create(tracePayload);
-
     return this.tracesRepository.save(trace);
+  }
+
+  private mapStatusString(status: string | undefined): any {
+    if (!status) return undefined;
+    const map: Record<string, string> = {
+      started: 'started', completed: 'completed', failed: 'failed', timeout: 'timeout',
+    };
+    return map[status] || status;
   }
 
   async findByProject(projectId: string, query: TraceQueryDto): Promise<Trace[]> {
@@ -56,11 +95,48 @@ export class TracesService {
     if (query.startDate) qb.andWhere('trace.createdAt >= :startDate', { startDate: new Date(query.startDate) });
     if (query.endDate) qb.andWhere('trace.createdAt <= :endDate', { endDate: new Date(query.endDate) });
 
-    qb.orderBy('trace.createdAt', 'DESC')
+    if (query.tags) {
+      const tagList = query.tags.split(',').map(t => t.trim()).filter(Boolean);
+      for (let i = 0; i < tagList.length; i++) {
+        qb.andWhere(`trace.tags LIKE :tag${i}`, { [`tag${i}`]: `%${tagList[i]}%` });
+      }
+    }
+
+    // Dynamic sort with whitelist
+    const allowedSorts = ['createdAt', 'durationMs', 'cost', 'totalTokens'];
+    const sortField = allowedSorts.includes(query.sortBy || '') ? query.sortBy! : 'createdAt';
+    const sortDir = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    qb.orderBy(`trace.${sortField}`, sortDir)
       .take(query.limit || 100)
       .skip(query.offset || 0);
 
     return qb.getMany();
+  }
+
+  async countByProject(projectId: string, query: TraceQueryDto): Promise<number> {
+    const qb = this.tracesRepository.createQueryBuilder('trace')
+      .where('trace.projectId = :projectId', { projectId });
+
+    if (query.agentId) qb.andWhere('trace.agentId = :agentId', { agentId: query.agentId });
+    if (query.agentName) qb.andWhere('trace.agentName = :agentName', { agentName: query.agentName });
+    if (query.type) qb.andWhere('trace.type = :type', { type: query.type });
+    if (query.status) qb.andWhere('trace.status = :status', { status: query.status });
+    if (query.traceId) qb.andWhere('trace.traceId = :traceId', { traceId: query.traceId });
+    if (query.sessionId) qb.andWhere('trace.sessionId = :sessionId', { sessionId: query.sessionId });
+    if (query.userId) qb.andWhere('trace.userId = :userId', { userId: query.userId });
+    if (query.model) qb.andWhere('trace.model = :model', { model: query.model });
+    if (query.minCost != null) qb.andWhere('trace.cost >= :minCost', { minCost: query.minCost });
+    if (query.minDuration != null) qb.andWhere('trace.durationMs >= :minDuration', { minDuration: query.minDuration });
+    if (query.startDate) qb.andWhere('trace.createdAt >= :startDate', { startDate: new Date(query.startDate) });
+    if (query.endDate) qb.andWhere('trace.createdAt <= :endDate', { endDate: new Date(query.endDate) });
+    if (query.tags) {
+      const tagList = query.tags.split(',').map(t => t.trim()).filter(Boolean);
+      for (let i = 0; i < tagList.length; i++) {
+        qb.andWhere(`trace.tags LIKE :tag${i}`, { [`tag${i}`]: `%${tagList[i]}%` });
+      }
+    }
+
+    return qb.getCount();
   }
 
   async findOne(id: string): Promise<Trace | null> {
@@ -162,6 +238,70 @@ export class TracesService {
       count: Number(result?.count ?? 0),
       tokens: Number(result?.tokens ?? 0),
     };
+  }
+
+  // ── Session aggregation ─────────────────────────────────────
+  async getSessionList(
+    projectId: string,
+    query: { limit?: number; offset?: number; userId?: string },
+  ) {
+    const qb = this.tracesRepository
+      .createQueryBuilder('trace')
+      .select('trace.sessionId', 'sessionId')
+      .addSelect('MIN(trace.userId)', 'userId')
+      .addSelect('MIN(trace.createdAt)', 'firstSeen')
+      .addSelect('MAX(trace.createdAt)', 'lastSeen')
+      .addSelect('COUNT(DISTINCT trace.traceId)', 'traceCount')
+      .addSelect('SUM(trace.cost)', 'totalCost')
+      .addSelect('SUM(trace.totalTokens)', 'totalTokens')
+      .where('trace.projectId = :projectId', { projectId })
+      .andWhere('trace.sessionId IS NOT NULL');
+
+    if (query.userId) {
+      qb.andWhere('trace.userId = :userId', { userId: query.userId });
+    }
+
+    qb.groupBy('trace.sessionId')
+      .orderBy('"lastSeen"', 'DESC')
+      .limit(query.limit || 50)
+      .offset(query.offset || 0);
+
+    return qb.getRawMany();
+  }
+
+  async getSessionTraces(projectId: string, sessionId: string) {
+    return this.tracesRepository.find({
+      where: { projectId, sessionId, type: TraceType.AGENT_RUN },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // ── User aggregation ──────────────────────────────────────
+  async getUserList(
+    projectId: string,
+    query: { limit?: number; offset?: number },
+  ) {
+    const qb = this.tracesRepository
+      .createQueryBuilder('trace')
+      .select('trace.userId', 'userId')
+      .addSelect('COUNT(DISTINCT trace.sessionId)', 'sessionCount')
+      .addSelect('COUNT(DISTINCT trace.traceId)', 'traceCount')
+      .addSelect('SUM(trace.cost)', 'totalCost')
+      .addSelect('SUM(trace.totalTokens)', 'totalTokens')
+      .addSelect('MIN(trace.createdAt)', 'firstSeen')
+      .addSelect('MAX(trace.createdAt)', 'lastSeen')
+      .where('trace.projectId = :projectId', { projectId })
+      .andWhere('trace.userId IS NOT NULL')
+      .groupBy('trace.userId')
+      .orderBy('"lastSeen"', 'DESC')
+      .limit(query.limit || 50)
+      .offset(query.offset || 0);
+
+    return qb.getRawMany();
+  }
+
+  async getUserSessions(projectId: string, userId: string) {
+    return this.getSessionList(projectId, { userId, limit: 100 });
   }
 
   // Detect runaway agents (loop detection)

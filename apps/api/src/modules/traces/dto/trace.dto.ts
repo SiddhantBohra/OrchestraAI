@@ -184,6 +184,21 @@ export class TraceQueryDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @ApiPropertyOptional({ description: 'Comma-separated tags filter' })
+  @IsOptional()
+  @IsString()
+  tags?: string;
+
+  @ApiPropertyOptional({ description: 'Sort field', enum: ['createdAt', 'durationMs', 'cost', 'totalTokens'] })
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'] })
+  @IsOptional()
+  @IsString()
+  sortOrder?: string;
 }
 
 export class TraceTreeNode {

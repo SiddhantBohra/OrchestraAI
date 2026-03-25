@@ -99,9 +99,9 @@ export class IngestTracesDto {
 
 // Simplified SDK format
 export class IngestEventDto {
-  @ApiProperty({ enum: ['agent_run', 'step', 'tool_call', 'llm_call', 'retriever', 'agent_action', 'human_input', 'error'] })
+  @ApiProperty({ enum: ['agent_run', 'step', 'tool_call', 'llm_call', 'retriever', 'agent_action', 'human_input', 'embedding', 'evaluator', 'guardrail', 'chain', 'error'] })
   @IsString()
-  type: 'agent_run' | 'step' | 'tool_call' | 'llm_call' | 'retriever' | 'agent_action' | 'human_input' | 'error';
+  type: 'agent_run' | 'step' | 'tool_call' | 'llm_call' | 'retriever' | 'agent_action' | 'human_input' | 'embedding' | 'evaluator' | 'guardrail' | 'chain' | 'error';
 
   @ApiProperty()
   @IsString()

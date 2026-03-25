@@ -65,6 +65,10 @@ export function getTraceTypeColor(type: string): string {
     retriever: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400',
     agent_action: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400',
     human_input: 'bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-400',
+    embedding: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400',
+    evaluator: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-400',
+    guardrail: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400',
+    chain: 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400',
     error: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
   };
   return colors[type] || 'bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400';
@@ -80,6 +84,10 @@ export function getTraceTypeIconColor(type: string): string {
     retriever: 'text-cyan-600 dark:text-cyan-400',
     agent_action: 'text-indigo-600 dark:text-indigo-400',
     human_input: 'text-pink-600 dark:text-pink-400',
+    embedding: 'text-orange-600 dark:text-orange-400',
+    evaluator: 'text-violet-600 dark:text-violet-400',
+    guardrail: 'text-rose-600 dark:text-rose-400',
+    chain: 'text-teal-600 dark:text-teal-400',
     error: 'text-red-600 dark:text-red-400',
   };
   return colors[type] || 'text-gray-500 dark:text-gray-400';
@@ -104,6 +112,10 @@ export function getTraceTypeLabel(type: string): string {
     retriever: 'RETRIEVER',
     agent_action: 'ACTION',
     human_input: 'HUMAN',
+    embedding: 'EMBED',
+    evaluator: 'EVAL',
+    guardrail: 'GUARD',
+    chain: 'CHAIN',
     error: 'ERROR',
   };
   return labels[type] || type.toUpperCase();

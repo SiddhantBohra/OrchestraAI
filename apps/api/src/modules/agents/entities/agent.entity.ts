@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { Project } from '../../projects/entities/project.entity';
 import { AgentFramework, AgentStatus } from '@orchestra-ai/shared';
@@ -13,6 +14,7 @@ import { AgentFramework, AgentStatus } from '@orchestra-ai/shared';
 export { AgentFramework, AgentStatus };
 
 @Entity('agents')
+@Unique(['name', 'projectId'])
 export class Agent {
   @PrimaryGeneratedColumn('uuid')
   id: string;

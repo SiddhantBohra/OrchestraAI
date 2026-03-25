@@ -161,6 +161,8 @@ export class Span {
     };
 
     this.trace.addPendingEvent(event);
+    // Flush eagerly so each span appears in the dashboard as it completes
+    this.trace.flushEager();
   }
 }
 
@@ -198,7 +200,7 @@ export class Trace {
     this.startTime = Date.now();
     this.metadata = options?.metadata || {};
 
-    // Send agent_run start event
+    // Send agent_run start event immediately so it appears in the dashboard in real-time
     this.addPendingEvent({
       type: TraceType.AGENT_RUN,
       traceId: this.traceId,
@@ -211,6 +213,8 @@ export class Trace {
       sessionId: this.sessionId,
       metadata: this.metadata,
     });
+    // Flush start event eagerly for real-time visibility
+    this.flush();
   }
 
   /** Set the trace-level input (shown in sidebar). */

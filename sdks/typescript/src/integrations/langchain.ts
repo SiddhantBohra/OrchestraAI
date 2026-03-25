@@ -243,14 +243,20 @@ export function createLangChainHandler(options: LangChainHandlerOptions): any {
       const span = spans.get(runId);
       if (!span) return;
 
-      const usage = extractTokenUsage(output);
-      const llmUsage = output?.llmOutput?.tokenUsage || output?.llm_output?.token_usage;
+      // Debug: log what LangChain passes
+      const llmOutput = output?.llmOutput || output?.llm_output;
+      console.log('[OrchestraAI] handleLLMEnd llmOutput:', JSON.stringify(llmOutput)?.slice(0, 300));
 
-      span.setData({
+      const usage = extractTokenUsage(output);
+      const llmUsage = llmOutput?.tokenUsage || llmOutput?.token_usage;
+
+      const data: Record<string, unknown> = {
         inputTokens: usage.inputTokens ?? llmUsage?.promptTokens ?? llmUsage?.prompt_tokens,
         outputTokens: usage.outputTokens ?? llmUsage?.completionTokens ?? llmUsage?.completion_tokens,
-        model: usage.model,
-      });
+      };
+      // Only override model if we actually extracted one (don't clobber the one from handleLLMStart)
+      if (usage.model) data.model = usage.model;
+      span.setData(data);
 
       const text = output?.generations?.[0]?.[0]?.message?.content
         || output?.generations?.[0]?.[0]?.text

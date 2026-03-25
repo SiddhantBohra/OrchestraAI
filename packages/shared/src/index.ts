@@ -32,6 +32,10 @@ export enum TraceType {
   RETRIEVER = 'retriever',
   AGENT_ACTION = 'agent_action',
   HUMAN_INPUT = 'human_input',
+  EMBEDDING = 'embedding',
+  EVALUATOR = 'evaluator',
+  GUARDRAIL = 'guardrail',
+  CHAIN = 'chain',
   ERROR = 'error',
 }
 
